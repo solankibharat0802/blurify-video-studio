@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -106,10 +106,15 @@ export const BatchDownloadModal = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
         <DialogHeader className="flex-row items-center justify-between">
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="w-5 h-5" />
-            Batch Video Processing
-          </DialogTitle>
+          <div>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="w-5 h-5" />
+              Batch Video Processing
+            </DialogTitle>
+            <DialogDescription>
+              Process multiple videos with blur effects and download them all at once
+            </DialogDescription>
+          </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="w-4 h-4" />
           </Button>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -106,7 +106,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         width,
         height,
         startTime: currentTime,
-        endTime: currentTime + 5,
+        endTime: Math.min(currentTime + 5, duration),
         intensity: 10
       };
       
@@ -138,10 +138,19 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   };
 
   const handleSave = () => {
+    if (blurMasks.length === 0) {
+      toast({
+        title: "No blur masks",
+        description: "Add at least one blur mask before saving",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     onSaveEdit(blurMasks);
     toast({
       title: "Video saved",
-      description: "Blur effects will be applied during processing"
+      description: `${blurMasks.length} blur effect(s) will be applied during processing`
     });
     onClose();
   };
@@ -154,6 +163,9 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
             <Square className="w-5 h-5" />
             Edit Video: {file?.name}
           </DialogTitle>
+          <DialogDescription>
+            Click and drag on the video to create blur masks, then adjust timing and intensity
+          </DialogDescription>
         </DialogHeader>
         
         <div className="flex-1 flex gap-6">
@@ -161,7 +173,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
           <div className="flex-1 flex flex-col">
             <div 
               ref={containerRef}
-              className="relative bg-black rounded-lg overflow-hidden aspect-video"
+              className="relative bg-black rounded-lg overflow-hidden aspect-video cursor-crosshair"
               onMouseDown={handleCanvasMouseDown}
               onMouseUp={handleCanvasMouseUp}
             >
@@ -172,7 +184,16 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
                 onLoadedMetadata={handleLoadedMetadata}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                controls={false}
+                preload="metadata"
               />
+              
+              {/* Drawing indicator */}
+              {isDrawing && (
+                <div className="absolute top-2 left-2 bg-primary text-primary-foreground px-2 py-1 rounded text-sm">
+                  Drawing blur mask...
+                </div>
+              )}
               
               {/* Blur Mask Overlay */}
               <canvas
