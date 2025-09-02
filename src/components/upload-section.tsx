@@ -1,8 +1,10 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Upload, File, X, Play } from "lucide-react";
+import { Upload, File, X, Play, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { VideoEditModal } from "./video-edit-modal";
+import { BatchDownloadModal } from "./batch-download-modal";
 
 interface UploadedFile {
   id: string;
@@ -10,11 +12,25 @@ interface UploadedFile {
   preview?: string;
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress?: number;
+  blurMasks?: BlurMask[];
+}
+
+interface BlurMask {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  startTime: number;
+  endTime: number;
+  intensity: number;
 }
 
 export const UploadSection = () => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [editingFile, setEditingFile] = useState<UploadedFile | null>(null);
+  const [showBatchModal, setShowBatchModal] = useState(false);
   const { toast } = useToast();
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -73,6 +89,55 @@ export const UploadSection = () => {
 
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(file => file.id !== id));
+  };
+
+  const handleEditVideo = (file: UploadedFile) => {
+    setEditingFile(file);
+  };
+
+  const handleSaveEdit = (masks: BlurMask[]) => {
+    if (editingFile) {
+      setFiles(prev => prev.map(file => 
+        file.id === editingFile.id 
+          ? { ...file, blurMasks: masks, status: 'pending' as const }
+          : file
+      ));
+    }
+    setEditingFile(null);
+  };
+
+  const handleProcessAll = () => {
+    // Start processing all videos with blur effects
+    setFiles(prev => prev.map(file => ({ ...file, status: 'processing' as const, progress: 0 })));
+    
+    // Simulate processing for demo
+    files.forEach((file, index) => {
+      setTimeout(() => {
+        const interval = setInterval(() => {
+          setFiles(current => current.map(f => {
+            if (f.id === file.id && f.status === 'processing') {
+              const newProgress = (f.progress || 0) + Math.random() * 10;
+              if (newProgress >= 100) {
+                clearInterval(interval);
+                return { ...f, status: 'completed' as const, progress: 100 };
+              }
+              return { ...f, progress: newProgress };
+            }
+            return f;
+          }));
+        }, 500);
+      }, index * 1000);
+    });
+    
+    setShowBatchModal(true);
+  };
+
+  const handleDownloadAll = () => {
+    const completedFiles = files.filter(f => f.status === 'completed');
+    toast({
+      title: "Download started",
+      description: `Downloading ${completedFiles.length} processed videos`
+    });
   };
 
   const formatFileSize = (bytes: number) => {
@@ -161,7 +226,11 @@ export const UploadSection = () => {
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEditVideo(uploadedFile)}
+                    >
                       <Play className="w-4 h-4" />
                       Edit
                     </Button>
@@ -193,13 +262,40 @@ export const UploadSection = () => {
             ))}
           </div>
           
-          <div className="mt-6 text-center">
-            <Button variant="hero" size="lg">
+          <div className="mt-6 flex gap-4 justify-center">
+            <Button variant="hero" size="lg" onClick={handleProcessAll}>
               Process All Videos
+            </Button>
+            <Button variant="outline" size="lg" onClick={() => setShowBatchModal(true)}>
+              <Download className="w-4 h-4 mr-2" />
+              Batch Download
             </Button>
           </div>
         </div>
       )}
+
+      {/* Video Edit Modal */}
+      <VideoEditModal
+        isOpen={!!editingFile}
+        onClose={() => setEditingFile(null)}
+        file={editingFile?.file || null}
+        onSaveEdit={handleSaveEdit}
+      />
+
+      {/* Batch Download Modal */}
+      <BatchDownloadModal
+        isOpen={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        videos={files.map(file => ({
+          id: file.id,
+          name: file.file.name,
+          status: file.status === 'pending' ? 'queued' : file.status,
+          progress: file.progress || 0,
+          downloadUrl: file.status === 'completed' ? `#download-${file.id}` : undefined
+        }))}
+        onStartProcessing={handleProcessAll}
+        onDownloadAll={handleDownloadAll}
+      />
     </section>
   );
 };
