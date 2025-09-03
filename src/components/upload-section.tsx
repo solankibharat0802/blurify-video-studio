@@ -33,7 +33,27 @@ export const UploadSection = () => {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const { toast } = useToast();
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const createVideoPreview = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        video.currentTime = 1; // Seek to 1 second for thumbnail
+      };
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(video, 0, 0);
+        resolve(canvas.toDataURL());
+        URL.revokeObjectURL(video.src);
+      };
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     
@@ -49,11 +69,26 @@ export const UploadSection = () => {
       return;
     }
 
-    const newFiles: UploadedFile[] = videoFiles.map(file => ({
-      id: Math.random().toString(36).substr(2, 9),
-      file,
-      status: 'pending'
-    }));
+    const newFiles: UploadedFile[] = await Promise.all(
+      videoFiles.map(async (file) => {
+        try {
+          const preview = await createVideoPreview(file);
+          return {
+            id: Math.random().toString(36).substr(2, 9),
+            file,
+            preview,
+            status: 'pending' as const
+          };
+        } catch (error) {
+          console.error('Error creating preview:', error);
+          return {
+            id: Math.random().toString(36).substr(2, 9),
+            file,
+            status: 'pending' as const
+          };
+        }
+      })
+    );
 
     setFiles(prev => [...prev, ...newFiles]);
     toast({
@@ -72,20 +107,39 @@ export const UploadSection = () => {
     setIsDragging(false);
   }, []);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
       const videoFiles = selectedFiles.filter(file => file.type.startsWith('video/'));
       
-      const newFiles: UploadedFile[] = videoFiles.map(file => ({
-        id: Math.random().toString(36).substr(2, 9),
-        file,
-        status: 'pending'
-      }));
+      const newFiles: UploadedFile[] = await Promise.all(
+        videoFiles.map(async (file) => {
+          try {
+            const preview = await createVideoPreview(file);
+            return {
+              id: Math.random().toString(36).substr(2, 9),
+              file,
+              preview,
+              status: 'pending' as const
+            };
+          } catch (error) {
+            console.error('Error creating preview:', error);
+            return {
+              id: Math.random().toString(36).substr(2, 9),
+              file,
+              status: 'pending' as const
+            };
+          }
+        })
+      );
 
       setFiles(prev => [...prev, ...newFiles]);
+      toast({
+        title: "Files uploaded",
+        description: `${videoFiles.length} video(s) ready for editing`
+      });
     }
-  }, []);
+  }, [toast]);
 
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(file => file.id !== id));
@@ -134,6 +188,30 @@ export const UploadSection = () => {
 
   const handleDownloadAll = () => {
     const completedFiles = files.filter(f => f.status === 'completed');
+    
+    if (completedFiles.length === 0) {
+      toast({
+        title: "No completed videos",
+        description: "Process some videos first before downloading",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Create download links for each completed video
+    completedFiles.forEach((file, index) => {
+      setTimeout(() => {
+        const url = URL.createObjectURL(file.file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `processed_${file.file.name}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, index * 500); // Stagger downloads
+    });
+    
     toast({
       title: "Download started",
       description: `Downloading ${completedFiles.length} processed videos`
@@ -210,10 +288,18 @@ export const UploadSection = () => {
             {files.map((uploadedFile) => (
               <Card key={uploadedFile.id} className="p-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <File className="w-6 h-6 text-primary" />
-                    </div>
+                   <div className="flex items-center gap-4">
+                     <div className="w-12 h-12 bg-primary/10 rounded-lg overflow-hidden flex items-center justify-center">
+                       {uploadedFile.preview ? (
+                         <img 
+                           src={uploadedFile.preview} 
+                           alt="Video thumbnail" 
+                           className="w-full h-full object-cover"
+                         />
+                       ) : (
+                         <File className="w-6 h-6 text-primary" />
+                       )}
+                     </div>
                     
                     <div>
                       <h4 className="font-medium truncate max-w-[300px]">

@@ -43,6 +43,14 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
     if (file && videoRef.current) {
       const url = URL.createObjectURL(file);
       videoRef.current.src = url;
+      videoRef.current.load(); // Force load the video
+      
+      // Reset states when new file is loaded
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
+      setBlurMasks([]);
+      
       return () => URL.revokeObjectURL(url);
     }
   }, [file]);
@@ -184,8 +192,18 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
                 onLoadedMetadata={handleLoadedMetadata}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                onError={(e) => {
+                  console.error('Video error:', e);
+                  toast({
+                    title: "Video loading error",
+                    description: "Could not load video file. Please try a different format.",
+                    variant: "destructive"
+                  });
+                }}
                 controls={false}
                 preload="metadata"
+                playsInline
+                muted
               />
               
               {/* Drawing indicator */}
