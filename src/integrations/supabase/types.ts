@@ -14,7 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      uploadvideo: {
+        Row: {
+          blur_masks: Json | null
+          created_at: string
+          duration: number | null
+          edited_file_path: string | null
+          end_time: number | null
+          file_size: number | null
+          id: string
+          original_file_path: string
+          original_filename: string
+          start_time: number | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          blur_masks?: Json | null
+          created_at?: string
+          duration?: number | null
+          edited_file_path?: string | null
+          end_time?: number | null
+          file_size?: number | null
+          id?: string
+          original_file_path: string
+          original_filename: string
+          start_time?: number | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          blur_masks?: Json | null
+          created_at?: string
+          duration?: number | null
+          edited_file_path?: string | null
+          end_time?: number | null
+          file_size?: number | null
+          id?: string
+          original_file_path?: string
+          original_filename?: string
+          start_time?: number | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
