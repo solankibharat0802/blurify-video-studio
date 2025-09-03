@@ -5,6 +5,7 @@ import { Upload, File, X, Play, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { VideoEditModal } from "./video-edit-modal";
 import { BatchDownloadModal } from "./batch-download-modal";
+import { supabase } from "@/integrations/supabase/client";
 
 interface UploadedFile {
   id: string;
@@ -13,6 +14,9 @@ interface UploadedFile {
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress?: number;
   blurMasks?: BlurMask[];
+  dbId?: string;
+  originalFilePath?: string;
+  editedFilePath?: string;
 }
 
 interface BlurMask {
@@ -53,6 +57,69 @@ export const UploadSection = () => {
     });
   };
 
+  const uploadToSupabase = async (file: File, fileId: string): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${fileId}.${fileExt}`;
+      const filePath = `temp-user/${fileName}`;
+
+      const { error } = await supabase.storage
+        .from('original-videos')
+        .upload(filePath, file);
+
+      if (error) {
+        console.error('Upload error:', error);
+        return null;
+      }
+
+      return filePath;
+    } catch (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+  };
+
+  const saveToDatabase = async (file: File, filePath: string, fileId: string) => {
+    try {
+      const videoDuration = await getVideoDuration(file);
+      
+      const { data, error } = await supabase
+        .from('uploadvideo')
+        .insert({
+          user_id: 'temp-user', // Replace with actual auth when implemented
+          original_filename: file.name,
+          original_file_path: filePath,
+          file_size: file.size,
+          duration: videoDuration,
+          status: 'uploaded'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Database error:', error);
+        return null;
+      }
+
+      return data.id;
+    } catch (error) {
+      console.error('Database error:', error);
+      return null;
+    }
+  };
+
+  const getVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        resolve(video.duration);
+        URL.revokeObjectURL(video.src);
+      };
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -72,29 +139,54 @@ export const UploadSection = () => {
     const newFiles: UploadedFile[] = await Promise.all(
       videoFiles.map(async (file) => {
         try {
+          const fileId = Math.random().toString(36).substr(2, 9);
           const preview = await createVideoPreview(file);
+          
+          // Upload to Supabase storage
+          const filePath = await uploadToSupabase(file, fileId);
+          if (!filePath) {
+            throw new Error('Upload failed');
+          }
+
+          // Save to database
+          const dbId = await saveToDatabase(file, filePath, fileId);
+          if (!dbId) {
+            throw new Error('Database save failed');
+          }
+
           return {
-            id: Math.random().toString(36).substr(2, 9),
+            id: fileId,
             file,
             preview,
-            status: 'pending' as const
+            status: 'pending' as const,
+            dbId,
+            originalFilePath: filePath
           };
         } catch (error) {
-          console.error('Error creating preview:', error);
+          console.error('Error processing file:', error);
+          toast({
+            title: "Upload failed",
+            description: `Failed to upload ${file.name}`,
+            variant: "destructive"
+          });
           return {
             id: Math.random().toString(36).substr(2, 9),
             file,
-            status: 'pending' as const
+            status: 'error' as const
           };
         }
       })
     );
 
-    setFiles(prev => [...prev, ...newFiles]);
-    toast({
-      title: "Files uploaded",
-      description: `${videoFiles.length} video(s) ready for editing`
-    });
+    const successfulUploads = newFiles.filter(f => f.status !== 'error');
+    setFiles(prev => [...prev, ...successfulUploads]);
+    
+    if (successfulUploads.length > 0) {
+      toast({
+        title: "Files uploaded",
+        description: `${successfulUploads.length} video(s) uploaded to backend`
+      });
+    }
   }, [toast]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -115,29 +207,54 @@ export const UploadSection = () => {
       const newFiles: UploadedFile[] = await Promise.all(
         videoFiles.map(async (file) => {
           try {
+            const fileId = Math.random().toString(36).substr(2, 9);
             const preview = await createVideoPreview(file);
+            
+            // Upload to Supabase storage
+            const filePath = await uploadToSupabase(file, fileId);
+            if (!filePath) {
+              throw new Error('Upload failed');
+            }
+
+            // Save to database
+            const dbId = await saveToDatabase(file, filePath, fileId);
+            if (!dbId) {
+              throw new Error('Database save failed');
+            }
+
             return {
-              id: Math.random().toString(36).substr(2, 9),
+              id: fileId,
               file,
               preview,
-              status: 'pending' as const
+              status: 'pending' as const,
+              dbId,
+              originalFilePath: filePath
             };
           } catch (error) {
-            console.error('Error creating preview:', error);
+            console.error('Error processing file:', error);
+            toast({
+              title: "Upload failed",
+              description: `Failed to upload ${file.name}`,
+              variant: "destructive"
+            });
             return {
               id: Math.random().toString(36).substr(2, 9),
               file,
-              status: 'pending' as const
+              status: 'error' as const
             };
           }
         })
       );
 
-      setFiles(prev => [...prev, ...newFiles]);
-      toast({
-        title: "Files uploaded",
-        description: `${videoFiles.length} video(s) ready for editing`
-      });
+      const successfulUploads = newFiles.filter(f => f.status !== 'error');
+      setFiles(prev => [...prev, ...successfulUploads]);
+      
+      if (successfulUploads.length > 0) {
+        toast({
+          title: "Files uploaded",
+          description: `${successfulUploads.length} video(s) uploaded to backend`
+        });
+      }
     }
   }, [toast]);
 
@@ -149,13 +266,46 @@ export const UploadSection = () => {
     setEditingFile(file);
   };
 
-  const handleSaveEdit = (masks: BlurMask[]) => {
-    if (editingFile) {
-      setFiles(prev => prev.map(file => 
-        file.id === editingFile.id 
-          ? { ...file, blurMasks: masks, status: 'pending' as const }
-          : file
-      ));
+  const handleSaveEdit = async (masks: BlurMask[]) => {
+    if (editingFile && editingFile.dbId) {
+      try {
+        // Update database with blur masks
+        const { error } = await supabase
+          .from('uploadvideo')
+          .update({
+            blur_masks: masks as any, // Cast to any for JSONB compatibility
+            status: 'processing'
+          })
+          .eq('id', editingFile.dbId);
+
+        if (error) {
+          console.error('Error updating video:', error);
+          toast({
+            title: "Save failed",
+            description: "Failed to save edits to backend",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        setFiles(prev => prev.map(file => 
+          file.id === editingFile.id 
+            ? { ...file, blurMasks: masks, status: 'processing' as const }
+            : file
+        ));
+        
+        toast({
+          title: "Edits saved",
+          description: "Video edits saved to backend"
+        });
+      } catch (error) {
+        console.error('Error saving edits:', error);
+        toast({
+          title: "Save failed",
+          description: "Failed to save edits",
+          variant: "destructive"
+        });
+      }
     }
     setEditingFile(null);
   };
@@ -186,7 +336,7 @@ export const UploadSection = () => {
     setShowBatchModal(true);
   };
 
-  const handleDownloadAll = () => {
+  const handleDownloadAll = async () => {
     const completedFiles = files.filter(f => f.status === 'completed');
     
     if (completedFiles.length === 0) {
@@ -198,23 +348,38 @@ export const UploadSection = () => {
       return;
     }
 
-    // Create download links for each completed video
-    completedFiles.forEach((file, index) => {
-      setTimeout(() => {
-        const url = URL.createObjectURL(file.file);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `processed_${file.file.name}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // Download from Supabase storage
+    completedFiles.forEach(async (file, index) => {
+      setTimeout(async () => {
+        if (file.editedFilePath) {
+          try {
+            const { data, error } = await supabase.storage
+              .from('edited-videos')
+              .download(file.editedFilePath);
+
+            if (error) {
+              console.error('Download error:', error);
+              return;
+            }
+
+            const url = URL.createObjectURL(data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `edited_${file.file.name}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          } catch (error) {
+            console.error('Download error:', error);
+          }
+        }
       }, index * 500); // Stagger downloads
     });
     
     toast({
       title: "Download started",
-      description: `Downloading ${completedFiles.length} processed videos`
+      description: `Downloading ${completedFiles.length} processed videos from backend`
     });
   };
 
