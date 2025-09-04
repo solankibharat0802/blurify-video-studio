@@ -59,9 +59,15 @@ export const UploadSection = () => {
 
   const uploadToSupabase = async (file: File, fileId: string): Promise<string | null> => {
     try {
+      // Get current user from Supabase auth
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${fileId}.${fileExt}`;
-      const filePath = `temp-user/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
       const { error } = await supabase.storage
         .from('original-videos')
@@ -83,10 +89,16 @@ export const UploadSection = () => {
     try {
       const videoDuration = await getVideoDuration(file);
       
+      // Get current user from Supabase auth
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+      
       const { data, error } = await supabase
         .from('uploadvideo')
         .insert({
-          user_id: 'temp-user', // Replace with actual auth when implemented
+          user_id: user.id,
           original_filename: file.name,
           original_file_path: filePath,
           file_size: file.size,
