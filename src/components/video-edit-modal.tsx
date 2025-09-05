@@ -52,10 +52,9 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       
       videoRef.current.src = url;
       
-      // Wait for loadstart before forcing load
+      // Video metadata loading handler
       const handleLoadStart = () => {
         console.log('Video loadstart event fired');
-        videoRef.current?.load();
       };
       
       const handleCanPlay = () => {
