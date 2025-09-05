@@ -117,17 +117,20 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    console.log('Mouse down event fired');
     if (!canvasRef.current || !containerRef.current) return;
     
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    console.log('Starting drawing at:', { x, y });
     setIsDrawing(true);
     setDragStart({ x, y });
   };
 
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
+    console.log('Mouse up event fired, isDrawing:', isDrawing);
     if (!isDrawing || !canvasRef.current || !containerRef.current) return;
     
     const rect = containerRef.current.getBoundingClientRect();
@@ -136,6 +139,8 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
     
     const width = Math.abs(x - dragStart.x);
     const height = Math.abs(y - dragStart.y);
+    
+    console.log('Blur mask dimensions:', { width, height, x, y, dragStart });
     
     if (width > 20 && height > 20) {
       const newMask: BlurMask = {
@@ -149,12 +154,19 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         intensity: 10
       };
       
-      setBlurMasks(prev => [...prev, newMask]);
+      console.log('Creating blur mask:', newMask);
+      setBlurMasks(prev => {
+        const updated = [...prev, newMask];
+        console.log('Updated blur masks:', updated);
+        return updated;
+      });
       setSelectedMask(newMask.id);
       toast({
         title: "Blur mask added",
         description: `Blur area created at ${formatTime(currentTime)}`
       });
+    } else {
+      console.log('Blur mask too small, not creating');
     }
     
     setIsDrawing(false);
