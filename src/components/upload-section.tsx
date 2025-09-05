@@ -18,6 +18,7 @@ interface UploadedFile {
   dbId?: string;
   originalFilePath?: string;
   editedFilePath?: string;
+  supabaseUrl?: string; // Add this for the signed URL
 }
 
 interface BlurMask {
@@ -275,8 +276,40 @@ export const UploadSection = () => {
     setFiles(prev => prev.filter(file => file.id !== id));
   };
 
-  const handleEditVideo = (file: UploadedFile) => {
-    setEditingFile(file);
+  const handleEditVideo = async (file: UploadedFile) => {
+    // Get the video URL from Supabase storage
+    if (file.originalFilePath) {
+      try {
+        const { data } = await supabase.storage
+          .from('original-videos')
+          .createSignedUrl(file.originalFilePath, 3600); // 1 hour expiry
+        
+        if (data?.signedUrl) {
+          // Create a modified file object with the Supabase URL
+          const fileWithUrl = {
+            ...file,
+            supabaseUrl: data.signedUrl
+          };
+          setEditingFile(fileWithUrl);
+        } else {
+          toast({
+            title: "Error",
+            description: "Could not load video from storage",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        console.error('Error getting video URL:', error);
+        toast({
+          title: "Error", 
+          description: "Could not load video from storage",
+          variant: "destructive"
+        });
+      }
+    } else {
+      // Fallback to original file if no storage path
+      setEditingFile(file);
+    }
   };
 
   const handleSaveEdit = async (masks: BlurMask[]) => {
@@ -553,7 +586,7 @@ export const UploadSection = () => {
       <VideoEditModal
         isOpen={!!editingFile}
         onClose={() => setEditingFile(null)}
-        file={editingFile?.file || null}
+        file={editingFile ? { ...editingFile.file, supabaseUrl: editingFile.supabaseUrl } : null}
         onSaveEdit={handleSaveEdit}
       />
 

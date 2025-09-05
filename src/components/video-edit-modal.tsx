@@ -21,7 +21,7 @@ interface BlurMask {
 interface VideoEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  file: File | null;
+  file: (File & { supabaseUrl?: string }) | null;
   onSaveEdit: (masks: BlurMask[]) => void;
 }
 
@@ -41,15 +41,34 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
 
   useEffect(() => {
     if (file && videoRef.current) {
-      const url = URL.createObjectURL(file);
+      let url: string;
+      
+      // Use Supabase URL if available, otherwise create object URL from file
+      if ('supabaseUrl' in file && file.supabaseUrl) {
+        url = file.supabaseUrl;
+      } else {
+        url = URL.createObjectURL(file);
+      }
+      
       videoRef.current.src = url;
       
       // Wait for loadstart before forcing load
       const handleLoadStart = () => {
+        console.log('Video loadstart event fired');
         videoRef.current?.load();
       };
       
+      const handleCanPlay = () => {
+        console.log('Video can play');
+      };
+      
+      const handleError = (e: Event) => {
+        console.error('Video error event:', e);
+      };
+      
       videoRef.current.addEventListener('loadstart', handleLoadStart);
+      videoRef.current.addEventListener('canplay', handleCanPlay);
+      videoRef.current.addEventListener('error', handleError);
       
       // Reset states when new file is loaded
       setCurrentTime(0);
@@ -58,8 +77,12 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       setBlurMasks([]);
       
       return () => {
-        URL.revokeObjectURL(url);
+        if (!('supabaseUrl' in file && file.supabaseUrl)) {
+          URL.revokeObjectURL(url);
+        }
         videoRef.current?.removeEventListener('loadstart', handleLoadStart);
+        videoRef.current?.removeEventListener('canplay', handleCanPlay);
+        videoRef.current?.removeEventListener('error', handleError);
       };
     }
   }, [file]);
