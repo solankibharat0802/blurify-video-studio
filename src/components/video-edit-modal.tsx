@@ -150,9 +150,10 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       };
       
       setBlurMasks(prev => [...prev, newMask]);
+      setSelectedMask(newMask.id);
       toast({
         title: "Blur mask added",
-        description: "Use the controls to adjust timing and intensity"
+        description: `Blur area created at ${formatTime(currentTime)}`
       });
     }
     
