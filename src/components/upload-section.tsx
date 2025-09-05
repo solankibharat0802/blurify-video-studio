@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Upload, File, X, Play, Download } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { VideoEditModal } from "./video-edit-modal";
 import { BatchDownloadModal } from "./batch-download-modal";
@@ -489,10 +490,21 @@ export const UploadSection = () => {
                   </div>
                   
                   <div className="flex items-center gap-2">
+                    {uploadedFile.status === 'processing' && uploadedFile.progress !== undefined && (
+                      <div className="flex items-center gap-2 mr-4">
+                        <div className="w-32">
+                          <Progress value={uploadedFile.progress} />
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          {Math.round(uploadedFile.progress)}%
+                        </span>
+                      </div>
+                    )}
                     <Button 
                       variant="outline" 
                       size="sm"
                       onClick={() => handleEditVideo(uploadedFile)}
+                      disabled={uploadedFile.status === 'processing'}
                     >
                       <Play className="w-4 h-4" />
                       Edit

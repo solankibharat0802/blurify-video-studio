@@ -43,7 +43,13 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
     if (file && videoRef.current) {
       const url = URL.createObjectURL(file);
       videoRef.current.src = url;
-      videoRef.current.load(); // Force load the video
+      
+      // Wait for loadstart before forcing load
+      const handleLoadStart = () => {
+        videoRef.current?.load();
+      };
+      
+      videoRef.current.addEventListener('loadstart', handleLoadStart);
       
       // Reset states when new file is loaded
       setCurrentTime(0);
@@ -51,7 +57,10 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       setIsPlaying(false);
       setBlurMasks([]);
       
-      return () => URL.revokeObjectURL(url);
+      return () => {
+        URL.revokeObjectURL(url);
+        videoRef.current?.removeEventListener('loadstart', handleLoadStart);
+      };
     }
   }, [file]);
 
