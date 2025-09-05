@@ -157,7 +157,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       console.log('Creating blur mask:', newMask);
       setBlurMasks(prev => {
         const updated = [...prev, newMask];
-        console.log('Updated blur masks:', updated);
+        console.log('Updated blur masks count:', updated.length);
         return updated;
       });
       setSelectedMask(newMask.id);
