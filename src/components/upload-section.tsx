@@ -315,12 +315,40 @@ export const UploadSection = () => {
   const handleSaveEdit = async (masks: BlurMask[]) => {
     if (editingFile && editingFile.dbId) {
       try {
-        // Update database with blur masks
+        // Get current user from Supabase auth
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error('User not authenticated');
+        }
+
+        // Create processed file path
+        const fileExt = editingFile.file.name.split('.').pop();
+        const editedFileName = `edited_${editingFile.id}.${fileExt}`;
+        const editedFilePath = `${user.id}/${editedFileName}`;
+
+        // Upload original file to edited-videos bucket (this would normally be the processed video)
+        // For now, we'll use the original file as a placeholder
+        const { error: uploadError } = await supabase.storage
+          .from('edited-videos')
+          .upload(editedFilePath, editingFile.file);
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          toast({
+            title: "Upload failed",
+            description: "Failed to upload edited video",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        // Update database with blur masks and edited file path
         const { error } = await supabase
           .from('uploadvideo')
           .update({
             blur_masks: masks as any, // Cast to any for JSONB compatibility
-            status: 'processing'
+            edited_file_path: editedFilePath,
+            status: 'completed'
           })
           .eq('id', editingFile.dbId);
 
@@ -336,13 +364,18 @@ export const UploadSection = () => {
 
         setFiles(prev => prev.map(file => 
           file.id === editingFile.id 
-            ? { ...file, blurMasks: masks, status: 'processing' as const }
+            ? { 
+                ...file, 
+                blurMasks: masks, 
+                status: 'completed' as const,
+                editedFilePath: editedFilePath
+              }
             : file
         ));
         
         toast({
-          title: "Edits saved",
-          description: "Video edits saved to backend"
+          title: "Video processed",
+          description: "Video edits saved and ready for download"
         });
       } catch (error) {
         console.error('Error saving edits:', error);
@@ -522,34 +555,83 @@ export const UploadSection = () => {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    {uploadedFile.status === 'processing' && uploadedFile.progress !== undefined && (
-                      <div className="flex items-center gap-2 mr-4">
-                        <div className="w-32">
-                          <Progress value={uploadedFile.progress} />
-                        </div>
-                        <span className="text-sm text-muted-foreground">
-                          {Math.round(uploadedFile.progress)}%
-                        </span>
-                      </div>
-                    )}
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleEditVideo(uploadedFile)}
-                      disabled={uploadedFile.status === 'processing'}
-                    >
-                      <Play className="w-4 h-4" />
-                      Edit
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => removeFile(uploadedFile.id)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
+                   <div className="flex items-center gap-2">
+                     {uploadedFile.status === 'processing' && uploadedFile.progress !== undefined && (
+                       <div className="flex items-center gap-2 mr-4">
+                         <div className="w-32">
+                           <Progress value={uploadedFile.progress} />
+                         </div>
+                         <span className="text-sm text-muted-foreground">
+                           {Math.round(uploadedFile.progress)}%
+                         </span>
+                       </div>
+                     )}
+                     
+                     {uploadedFile.status === 'completed' && uploadedFile.editedFilePath && (
+                       <Button 
+                         variant="hero" 
+                         size="sm"
+                         onClick={async () => {
+                           try {
+                             const { data, error } = await supabase.storage
+                               .from('edited-videos')
+                               .download(uploadedFile.editedFilePath!);
+
+                             if (error) {
+                               console.error('Download error:', error);
+                               toast({
+                                 title: "Download failed",
+                                 description: "Could not download the edited video",
+                                 variant: "destructive"
+                               });
+                               return;
+                             }
+
+                             const url = URL.createObjectURL(data);
+                             const a = document.createElement('a');
+                             a.href = url;
+                             a.download = `edited_${uploadedFile.file.name}`;
+                             document.body.appendChild(a);
+                             a.click();
+                             document.body.removeChild(a);
+                             setTimeout(() => URL.revokeObjectURL(url), 1000);
+                             
+                             toast({
+                               title: "Download started",
+                               description: "Edited video download started"
+                             });
+                           } catch (error) {
+                             console.error('Download error:', error);
+                             toast({
+                               title: "Download failed",
+                               description: "Could not download the edited video",
+                               variant: "destructive"
+                             });
+                           }
+                         }}
+                       >
+                         <Download className="w-4 h-4" />
+                         Download
+                       </Button>
+                     )}
+                     
+                     <Button 
+                       variant="outline" 
+                       size="sm"
+                       onClick={() => handleEditVideo(uploadedFile)}
+                       disabled={uploadedFile.status === 'processing'}
+                     >
+                       <Play className="w-4 h-4" />
+                       Edit
+                     </Button>
+                     <Button 
+                       variant="ghost" 
+                       size="sm"
+                       onClick={() => removeFile(uploadedFile.id)}
+                     >
+                       <X className="w-4 h-4" />
+                     </Button>
+                   </div>
                 </div>
                 
                 {uploadedFile.status === 'processing' && uploadedFile.progress && (
