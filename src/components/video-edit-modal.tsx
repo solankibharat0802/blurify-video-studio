@@ -121,9 +121,13 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
     }
   };
 
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+  const [dragEnd, setDragEnd] = useState({ x: 0, y: 0 });
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     console.log('Mouse down event fired');
-    if (!canvasRef.current || !containerRef.current) return;
+    if (!containerRef.current) return;
     
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -132,11 +136,24 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
     console.log('Starting drawing at:', { x, y });
     setIsDrawing(true);
     setDragStart({ x, y });
+    setDragEnd({ x, y });
   };
 
-  const handleCanvasMouseUp = (e: React.MouseEvent) => {
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDrawing || !containerRef.current) return;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    setDragEnd({ x, y });
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     console.log('Mouse up event fired, isDrawing:', isDrawing);
-    if (!isDrawing || !canvasRef.current || !containerRef.current) return;
+    if (!isDrawing || !containerRef.current) return;
     
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -147,42 +164,37 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
     
     console.log('Blur mask dimensions:', { width, height, x, y, dragStart });
     
-    if (width > 20 && height > 20) {
+    if (width > 10 && height > 10) {
       const newMask: BlurMask = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: `mask_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         x: Math.min(dragStart.x, x),
         y: Math.min(dragStart.y, y),
         width,
         height,
         startTime: currentTime,
-        endTime: Math.min(currentTime + 5, duration),
+        endTime: Math.min(currentTime + 5, duration || currentTime + 5),
         intensity: 10
       };
       
       console.log('Creating blur mask:', newMask);
       
-      // Force state update with a functional update
       setBlurMasks(prevMasks => {
         const updated = [...prevMasks, newMask];
-        console.log('Updated blur masks count:', updated.length);
-        console.log('All blur masks:', updated);
-        // Force re-render by setting state again after a small delay
-        setTimeout(() => {
-          console.log('Force re-render check, masks count:', updated.length);
-        }, 100);
+        console.log('NEW STATE - Updated blur masks count:', updated.length);
         return updated;
       });
       
       setSelectedMask(newMask.id);
       toast({
         title: "Blur mask added",
-        description: `Blur area created at ${formatTime(currentTime)}`
+        description: `Blur area created at ${formatTime(currentTime)}. Total: ${blurMasks.length + 1}`
       });
     } else {
       console.log('Blur mask too small, not creating');
     }
     
     setIsDrawing(false);
+    setDragEnd({ x: 0, y: 0 });
   };
 
   const deleteMask = (id: string) => {
@@ -241,9 +253,11 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
           <div className="flex-1 flex flex-col">
             <div 
               ref={containerRef}
-              className="relative bg-black rounded-lg overflow-hidden aspect-video cursor-crosshair"
-              onMouseDown={handleCanvasMouseDown}
-              onMouseUp={handleCanvasMouseUp}
+              className="relative bg-black rounded-lg overflow-hidden aspect-video cursor-crosshair select-none"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={() => setIsDrawing(false)}
             >
               <video
                 ref={videoRef}
@@ -266,11 +280,22 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
                 muted
               />
               
-              {/* Drawing indicator */}
+              {/* Drawing indicator and preview */}
               {isDrawing && (
-                <div className="absolute top-2 left-2 bg-primary text-primary-foreground px-2 py-1 rounded text-sm">
-                  Drawing blur mask...
-                </div>
+                <>
+                  <div className="absolute top-2 left-2 bg-primary text-primary-foreground px-2 py-1 rounded text-sm z-10">
+                    Drawing blur mask... ({Math.abs(dragEnd.x - dragStart.x)}×{Math.abs(dragEnd.y - dragStart.y)})
+                  </div>
+                  <div 
+                    className="absolute border-2 border-primary bg-primary/20 z-10"
+                    style={{
+                      left: Math.min(dragStart.x, dragEnd.x),
+                      top: Math.min(dragStart.y, dragEnd.y),
+                      width: Math.abs(dragEnd.x - dragStart.x),
+                      height: Math.abs(dragEnd.y - dragStart.y),
+                    }}
+                  />
+                </>
               )}
               
               {/* Blur Mask Overlay */}
