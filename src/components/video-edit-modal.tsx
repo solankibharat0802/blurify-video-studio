@@ -160,12 +160,19 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       };
       
       console.log('Creating blur mask:', newMask);
-      setBlurMasks(prev => {
-        const updated = [...prev, newMask];
+      
+      // Force state update with a functional update
+      setBlurMasks(prevMasks => {
+        const updated = [...prevMasks, newMask];
         console.log('Updated blur masks count:', updated.length);
         console.log('All blur masks:', updated);
+        // Force re-render by setting state again after a small delay
+        setTimeout(() => {
+          console.log('Force re-render check, masks count:', updated.length);
+        }, 100);
         return updated;
       });
+      
       setSelectedMask(newMask.id);
       toast({
         title: "Blur mask added",
@@ -196,6 +203,9 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   };
 
   const handleSave = () => {
+    console.log('Save clicked, blur masks count:', blurMasks.length);
+    console.log('All blur masks:', blurMasks);
+    
     if (blurMasks.length === 0) {
       toast({
         title: "No blur masks",
@@ -334,8 +344,14 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
           
           {/* Blur Controls */}
           <div className="w-80 space-y-6">
-            <Card className="p-4">
+            <Card className="p-4" key={`blur-controls-${blurMasks.length}`}>
               <h3 className="font-semibold mb-4">Blur Masks ({blurMasks.length})</h3>
+              
+              <div className="mb-2">
+                <p className="text-xs text-muted-foreground">
+                  Total masks: {blurMasks.length}
+                </p>
+              </div>
               
               {blurMasks.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
@@ -345,9 +361,9 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
                 <div className="space-y-3 max-h-60 overflow-y-auto">
                   {blurMasks.map((mask, index) => (
                     <Card 
-                      key={mask.id} 
+                      key={`${mask.id}-${index}`} 
                       className={`p-3 cursor-pointer transition-colors ${
-                        selectedMask === mask.id ? 'border-primary' : ''
+                        selectedMask === mask.id ? 'border-primary bg-primary/5' : ''
                       }`}
                       onClick={() => setSelectedMask(mask.id)}
                     >
