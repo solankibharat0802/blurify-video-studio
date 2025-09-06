@@ -39,6 +39,11 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
+  // Debug blur masks state changes
+  useEffect(() => {
+    console.log('BlurMasks state changed:', blurMasks.length, blurMasks);
+  }, [blurMasks]);
+
   useEffect(() => {
     if (file && videoRef.current) {
       let url: string;
@@ -158,6 +163,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       setBlurMasks(prev => {
         const updated = [...prev, newMask];
         console.log('Updated blur masks count:', updated.length);
+        console.log('All blur masks:', updated);
         return updated;
       });
       setSelectedMask(newMask.id);
