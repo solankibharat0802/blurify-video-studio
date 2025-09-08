@@ -62,6 +62,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       setFileUrl(url);
       
       videoRef.current.src = url;
+      videoRef.current.load(); // Force reload the video element
       
       // Video metadata loading handler
       const handleLoadStart = () => {
