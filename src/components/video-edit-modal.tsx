@@ -57,9 +57,10 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         url = URL.createObjectURL(file);
       }
       
-      // Only reset blur masks if this is a different file
-      const isNewFile = fileUrl !== url;
-      setFileUrl(url);
+      // Check if this is a different file by comparing file name and size
+      const currentFileId = `${file.name}_${file.size}_${file.lastModified}`;
+      const isNewFile = fileUrl !== currentFileId;
+      setFileUrl(currentFileId);
       
       videoRef.current.src = url;
       videoRef.current.load(); // Force reload the video element
@@ -81,12 +82,14 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       videoRef.current.addEventListener('canplay', handleCanPlay);
       videoRef.current.addEventListener('error', handleError);
       
-      // Only reset states when new file is loaded, not on re-renders
+      // Always reset states when new file is loaded to prevent blur masks from persisting
       if (isNewFile) {
+        console.log('New file detected, clearing blur masks');
         setCurrentTime(0);
         setDuration(0);
         setIsPlaying(false);
         setBlurMasks([]);
+        setSelectedMask(null);
       }
       
       return () => {
