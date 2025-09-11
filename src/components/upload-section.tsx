@@ -666,6 +666,7 @@ export const UploadSection = () => {
 
       {/* Video Edit Modal */}
       <VideoEditModal
+        key={editingFile ? `${editingFile.file.name}_${editingFile.file.size}_${editingFile.file.lastModified}` : 'no-file'}
         isOpen={!!editingFile}
         onClose={() => setEditingFile(null)}
         file={editingFile ? { ...editingFile.file, supabaseUrl: editingFile.supabaseUrl } : null}

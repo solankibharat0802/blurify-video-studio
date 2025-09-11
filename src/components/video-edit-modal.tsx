@@ -50,6 +50,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   useEffect(() => {
     if (file && isOpen) {
       const currentFileId = `${file.name}_${file.size}_${file.lastModified}`;
+      console.log('Modal opened with file:', currentFileId, 'previous:', fileUrl);
       if (fileUrl !== currentFileId) {
         console.log('Different file detected, clearing all states');
         setCurrentTime(0);
@@ -59,6 +60,15 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         setSelectedMask(null);
         setFileUrl(currentFileId);
       }
+    } else if (!isOpen) {
+      console.log('Modal closed, clearing states');
+      // Always clear when modal closes to prevent persistence
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
+      setBlurMasks([]);
+      setSelectedMask(null);
+      setFileUrl('');
     }
   }, [file, isOpen, fileUrl]);
 
