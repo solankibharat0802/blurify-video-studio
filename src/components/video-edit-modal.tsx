@@ -46,6 +46,22 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
 
   const [fileUrl, setFileUrl] = useState<string>('');
 
+  // Reset all states when modal opens with a different file
+  useEffect(() => {
+    if (file && isOpen) {
+      const currentFileId = `${file.name}_${file.size}_${file.lastModified}`;
+      if (fileUrl !== currentFileId) {
+        console.log('Different file detected, clearing all states');
+        setCurrentTime(0);
+        setDuration(0);
+        setIsPlaying(false);
+        setBlurMasks([]);
+        setSelectedMask(null);
+        setFileUrl(currentFileId);
+      }
+    }
+  }, [file, isOpen, fileUrl]);
+
   useEffect(() => {
     if (file && videoRef.current) {
       let url: string;
@@ -56,11 +72,6 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       } else {
         url = URL.createObjectURL(file);
       }
-      
-      // Check if this is a different file by comparing file name and size
-      const currentFileId = `${file.name}_${file.size}_${file.lastModified}`;
-      const isNewFile = fileUrl !== currentFileId;
-      setFileUrl(currentFileId);
       
       videoRef.current.src = url;
       videoRef.current.load(); // Force reload the video element
@@ -82,15 +93,6 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       videoRef.current.addEventListener('canplay', handleCanPlay);
       videoRef.current.addEventListener('error', handleError);
       
-      // Always reset states when new file is loaded to prevent blur masks from persisting
-      if (isNewFile) {
-        console.log('New file detected, clearing blur masks');
-        setCurrentTime(0);
-        setDuration(0);
-        setIsPlaying(false);
-        setBlurMasks([]);
-        setSelectedMask(null);
-      }
       
       return () => {
         if (!('supabaseUrl' in file && file.supabaseUrl)) {
