@@ -333,14 +333,13 @@ export const UploadSection = () => {
         ));
 
         // Dynamically load ffmpeg.wasm
-        const ffmpegModule: any = await import('@ffmpeg/ffmpeg');
-        const createFFmpeg = ffmpegModule.createFFmpeg;
-        const fetchFile = ffmpegModule.fetchFile;
-        const ffmpeg = createFFmpeg({ log: true });
+        const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+        const { fetchFile } = await import('@ffmpeg/util');
+        const ffmpeg = new FFmpeg();
         await ffmpeg.load();
 
         // Write input video
-        await ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(editingFile.file));
+        await ffmpeg.writeFile('input.mp4', await fetchFile(editingFile.file));
 
         // Build filter_complex from masks (coordinates are in intrinsic video pixels)
         const buildFilter = (m: BlurMask[]) => {
@@ -380,10 +379,10 @@ export const UploadSection = () => {
           '-y', 'output.mp4'
         ];
 
-        await ffmpeg.run(...args);
+        await ffmpeg.exec(args);
 
-        const data = ffmpeg.FS('readFile', 'output.mp4');
-        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const data = await ffmpeg.readFile('output.mp4') as Uint8Array;
+        const blob = new Blob([data], { type: 'video/mp4' });
 
         // Upload to storage
         const { data: userData } = await supabase.auth.getUser();
