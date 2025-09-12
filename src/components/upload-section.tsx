@@ -429,7 +429,7 @@ export const UploadSection = () => {
   };
 
   const handleProcessAll = async () => {
-    // Start processing all videos that have blur masks configured
+    // Start processing all videos that have blur masks configured (client-side)
     const toProcess = files.filter(f => f.dbId && f.blurMasks && f.blurMasks.length > 0);
 
     if (toProcess.length === 0) {
@@ -447,59 +447,134 @@ export const UploadSection = () => {
       : f
     ));
 
-    // Update DB and invoke edge function for each video in parallel
-    await Promise.all(toProcess.map(async (file, index) => {
-      try {
-        // Save masks and mark processing in DB
-        await supabase
-          .from('uploadvideo')
-          .update({ blur_masks: file.blurMasks as any, status: 'processing' })
-          .eq('id', file.dbId);
+    try {
+      const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+      const { fetchFile } = await import('@ffmpeg/util');
+      const ffmpeg = new FFmpeg();
+      await ffmpeg.load();
 
-        // Invoke processor
-        await supabase.functions.invoke('process-video', {
-          body: { videoId: file.dbId, blurMasks: file.blurMasks }
+      // Common filter builder
+      const buildFilter = (m: BlurMask[]) => {
+        let parts: string[] = [];
+        let last = '[0:v]';
+        m.forEach((mask, i) => {
+          const base = `base${i}`;
+          const blur = `blur${i}`;
+          const crop = `crop${i}`;
+          const out = `out${i}`;
+          const x = Math.max(0, Math.round(mask.x));
+          const y = Math.max(0, Math.round(mask.y));
+          const w = Math.max(1, Math.round(mask.width));
+          const h = Math.max(1, Math.round(mask.height));
+          const radius = Math.max(1, Math.round(mask.intensity));
+          const enable = `between(t,${mask.startTime},${mask.endTime})`;
+
+          parts.push(`${last}split[${base}][${blur}]`);
+          parts.push(`[${blur}]boxblur=${radius}:${radius},crop=${w}:${h}:${x}:${y}[${crop}]`);
+          parts.push(`[${base}][${crop}]overlay=${x}:${y}:enable='${enable}'[${out}]`);
+          last = `[${out}]`;
         });
+        return { filter: parts.join('; '), out: last };
+      };
 
-        // Poll for completion
-        const pollInterval = setInterval(async () => {
-          const { data: videoData } = await supabase
+      // Get user once
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) throw new Error('Not authenticated');
+
+      // Process sequentially to avoid memory spikes
+      for (const file of toProcess) {
+        try {
+          // Update DB to processing with masks
+          await supabase
             .from('uploadvideo')
-            .select('status, edited_file_path')
-            .eq('id', file.dbId)
-            .single();
+            .update({ blur_masks: file.blurMasks as any, status: 'processing' })
+            .eq('id', file.dbId);
 
-          if (videoData?.status === 'completed' && videoData.edited_file_path) {
-            clearInterval(pollInterval);
-            setFiles(prev => prev.map(f => f.id === file.id 
-              ? { ...f, status: 'completed' as const, progress: 100, editedFilePath: videoData.edited_file_path }
-              : f
-            ));
-          } else if (videoData?.status === 'error') {
-            clearInterval(pollInterval);
-            setFiles(prev => prev.map(f => f.id === file.id 
-              ? { ...f, status: 'error' as const }
-              : f
-            ));
-          } else {
-            // Increment fake progress while waiting
+          // Prepare input
+          try { await ffmpeg.deleteFile('input.mp4'); } catch {}
+          try { await ffmpeg.deleteFile('output.mp4'); } catch {}
+          await ffmpeg.writeFile('input.mp4', await fetchFile(file.file));
+
+          const { filter, out } = buildFilter(file.blurMasks!);
+
+          // Wire progress to UI
+          ffmpeg.on('progress', ({ progress }) => {
             setFiles(prev => prev.map(f => f.id === file.id && f.status === 'processing'
-              ? { ...f, progress: Math.min(99, (f.progress || 0) + Math.random() * 8) }
+              ? { ...f, progress: Math.max(1, Math.min(99, Math.round(progress * 100))) }
               : f
             ));
-          }
-        }, 3000);
+          });
 
-        // Safety clear after 5 minutes
-        setTimeout(() => clearInterval(pollInterval), 300000);
-      } catch (err) {
-        console.error('Batch process error:', err);
-        setFiles(prev => prev.map(f => f.id === file.id 
-          ? { ...f, status: 'error' as const }
-          : f
-        ));
+          const args = [
+            '-i', 'input.mp4',
+            '-filter_complex', filter,
+            '-map', out,
+            '-map', '0:a?',
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-c:a', 'aac',
+            '-movflags', '+faststart',
+            '-y', 'output.mp4'
+          ];
+
+          try {
+            await ffmpeg.exec(args);
+          } catch (e) {
+            // Fallback to mpeg4 if libx264 is unavailable in this build
+            console.warn('FFmpeg x264 failed, falling back to mpeg4', e);
+            await ffmpeg.exec([
+              '-i', 'input.mp4',
+              '-filter_complex', filter,
+              '-map', out,
+              '-map', '0:a?',
+              '-c:v', 'mpeg4',
+              '-q:v', '5',
+              '-c:a', 'aac',
+              '-movflags', '+faststart',
+              '-y', 'output.mp4'
+            ]);
+          }
+
+          const data = await ffmpeg.readFile('output.mp4') as Uint8Array;
+          const blob = new Blob([data], { type: 'video/mp4' });
+
+          const fileExt = file.file.name.split('.').pop();
+          const editedFileName = `edited_${file.id}.${fileExt}`;
+          const editedFilePath = `${userId}/${editedFileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('edited-videos')
+            .upload(editedFilePath, blob, { contentType: 'video/mp4', upsert: true });
+          if (uploadError) throw uploadError;
+
+          await supabase
+            .from('uploadvideo')
+            .update({ edited_file_path: editedFilePath, status: 'completed' })
+            .eq('id', file.dbId);
+
+          setFiles(prev => prev.map(f => f.id === file.id
+            ? { ...f, status: 'completed' as const, progress: 100, editedFilePath }
+            : f
+          ));
+        } catch (err) {
+          console.error('Processing error for file', file.id, err);
+          setFiles(prev => prev.map(f => f.id === file.id
+            ? { ...f, status: 'error' as const }
+            : f
+          ));
+          await supabase
+            .from('uploadvideo')
+            .update({ status: 'error' })
+            .eq('id', file.dbId);
+        }
       }
-    }));
+
+      toast({ title: 'Batch processing complete', description: 'Finished processing videos.' });
+    } catch (err) {
+      console.error('Batch initialize error:', err);
+      toast({ title: 'Processing failed', description: 'Failed to initialize processor', variant: 'destructive' });
+    }
 
     setShowBatchModal(true);
   };
