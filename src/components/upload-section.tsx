@@ -363,7 +363,7 @@ export const UploadSection = () => {
         console.log('FFmpeg: starting load');
         try {
           // Use blob URLs to avoid COOP/COEP requirements
-          const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+          const baseURL = '/ffmpeg';
           await ffmpeg.load({
             coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
             wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
@@ -524,7 +524,7 @@ export const UploadSection = () => {
       const ffmpeg = new FFmpeg();
       console.log('FFmpeg: starting load');
       try {
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+        const baseURL = '/ffmpeg';
         await ffmpeg.load({
           coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
