@@ -332,24 +332,55 @@ export const UploadSection = () => {
             : file
         ));
 
+        // Prefer server-side processing via Edge Function first
+        try {
+          toast({ title: 'Processing on server', description: 'Starting server-side processing...' });
+          const { data: invokeData, error: invokeError } = await supabase.functions.invoke('process-video', {
+            body: { videoId: editingFile.dbId, blurMasks: masks }
+          });
+          if (invokeError) throw invokeError as any;
+          const editedFilePath = (invokeData as any)?.editedFilePath;
+          if (!editedFilePath) throw new Error('Server did not return edited file path');
+
+          // Update UI to completed
+          setFiles(prev => prev.map(file => 
+            file.id === editingFile.id 
+              ? { ...file, status: 'completed' as const, progress: 100, editedFilePath }
+              : file
+          ));
+
+          toast({ title: 'Video processed', description: 'Server finished processing your video.' });
+          return; // Skip local processing fallback
+        } catch (serverErr) {
+          console.error('Server processing failed, falling back to local ffmpeg', serverErr);
+        }
+
         // Dynamically load ffmpeg.wasm
         const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-        const { fetchFile } = await import('@ffmpeg/util');
+        const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
         const ffmpeg = new FFmpeg();
         toast({ title: 'Initializing video processor', description: 'Downloading FFmpeg engine (first run may take ~20s)...' });
         console.log('FFmpeg: starting load');
-        await ffmpeg.load({
-          coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
-          wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
-          workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.worker.js'
-        });
-        console.log('FFmpeg: load finished');
+        try {
+          // Use blob URLs to avoid COOP/COEP requirements
+          const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+          await ffmpeg.load({
+            coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+            wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+            workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+          });
+          console.log('FFmpeg: load finished');
+        } catch (e) {
+          console.error('FFmpeg load failed', e);
+          toast({ title: 'Processor init failed', description: 'Could not load FFmpeg. Please retry.', variant: 'destructive' });
+          throw e;
+        }
         ffmpeg.on('log', ({ message }) => console.log('FFmpeg log:', message));
 
         // Ensure clean FS and write input
         try { await ffmpeg.deleteFile('input.mp4'); } catch {}
         try { await ffmpeg.deleteFile('output.mp4'); } catch {}
-        await ffmpeg.writeFile('input.mp4', await fetchFile(editingFile.file));
+        await ffmpeg.writeFile('input.mp4', await fetchFile(editingFile.supabaseUrl ? editingFile.supabaseUrl : editingFile.file));
 
         // Build filter_complex from masks (coordinates are in intrinsic video pixels)
         const buildFilter = (m: BlurMask[]) => {
@@ -376,6 +407,7 @@ export const UploadSection = () => {
         };
 
         const { filter, out } = buildFilter(masks);
+        console.log('Using FFmpeg filter_complex:', filter, 'out:', out);
 
         // Update UI progress from FFmpeg
         ffmpeg.on('progress', ({ progress }) => {
@@ -487,16 +519,23 @@ export const UploadSection = () => {
 
     try {
       const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-      const { fetchFile } = await import('@ffmpeg/util');
+      const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
       toast({ title: 'Initializing video processor', description: 'Downloading FFmpeg engine (first run may take ~20s)...' });
       const ffmpeg = new FFmpeg();
       console.log('FFmpeg: starting load');
-      await ffmpeg.load({
-        coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
-        wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
-        workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.worker.js'
-      });
-      console.log('FFmpeg: load finished');
+      try {
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+        await ffmpeg.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+          workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+        });
+        console.log('FFmpeg: load finished');
+      } catch (e) {
+        console.error('FFmpeg load failed', e);
+        toast({ title: 'Processor init failed', description: 'Could not load FFmpeg. Please retry.', variant: 'destructive' });
+        throw e;
+      }
       ffmpeg.on('log', ({ message }) => console.log('FFmpeg log:', message));
       toast({ title: 'Processing started', description: `Processing ${toProcess.length} video(s)...` });
 
@@ -544,6 +583,7 @@ export const UploadSection = () => {
           await ffmpeg.writeFile('input.mp4', await fetchFile(file.file));
 
           const { filter, out } = buildFilter(file.blurMasks!);
+          console.log('Using FFmpeg filter_complex:', filter, 'out:', out);
 
           // Wire progress to UI
           ffmpeg.on('progress', ({ progress }) => {
@@ -850,7 +890,7 @@ export const UploadSection = () => {
                    </div>
                 </div>
                 
-                {uploadedFile.status === 'processing' && uploadedFile.progress && (
+                {uploadedFile.status === 'processing' && uploadedFile.progress !== undefined && (
                   <div className="mt-4">
                     <div className="flex justify-between text-sm mb-2">
                       <span>Processing...</span>
