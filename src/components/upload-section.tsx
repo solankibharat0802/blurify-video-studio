@@ -429,29 +429,79 @@ export const UploadSection = () => {
     setEditingFile(null);
   };
 
-  const handleProcessAll = () => {
-    // Start processing all videos with blur effects
-    setFiles(prev => prev.map(file => ({ ...file, status: 'processing' as const, progress: 0 })));
-    
-    // Simulate processing for demo
-    files.forEach((file, index) => {
-      setTimeout(() => {
-        const interval = setInterval(() => {
-          setFiles(current => current.map(f => {
-            if (f.id === file.id && f.status === 'processing') {
-              const newProgress = (f.progress || 0) + Math.random() * 10;
-              if (newProgress >= 100) {
-                clearInterval(interval);
-                return { ...f, status: 'completed' as const, progress: 100 };
-              }
-              return { ...f, progress: newProgress };
-            }
-            return f;
-          }));
-        }, 500);
-      }, index * 1000);
-    });
-    
+  const handleProcessAll = async () => {
+    // Start processing all videos that have blur masks configured
+    const toProcess = files.filter(f => f.dbId && f.blurMasks && f.blurMasks.length > 0);
+
+    if (toProcess.length === 0) {
+      toast({
+        title: "Nothing to process",
+        description: "Please add blur masks to at least one video before processing",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Optimistically set status to processing
+    setFiles(prev => prev.map(f => toProcess.some(tp => tp.id === f.id)
+      ? { ...f, status: 'processing' as const, progress: 0 }
+      : f
+    ));
+
+    // Update DB and invoke edge function for each video in parallel
+    await Promise.all(toProcess.map(async (file, index) => {
+      try {
+        // Save masks and mark processing in DB
+        await supabase
+          .from('uploadvideo')
+          .update({ blur_masks: file.blurMasks as any, status: 'processing' })
+          .eq('id', file.dbId);
+
+        // Invoke processor
+        await supabase.functions.invoke('process-video', {
+          body: { videoId: file.dbId, blurMasks: file.blurMasks }
+        });
+
+        // Poll for completion
+        const pollInterval = setInterval(async () => {
+          const { data: videoData } = await supabase
+            .from('uploadvideo')
+            .select('status, edited_file_path')
+            .eq('id', file.dbId)
+            .single();
+
+          if (videoData?.status === 'completed' && videoData.edited_file_path) {
+            clearInterval(pollInterval);
+            setFiles(prev => prev.map(f => f.id === file.id 
+              ? { ...f, status: 'completed' as const, progress: 100, editedFilePath: videoData.edited_file_path }
+              : f
+            ));
+          } else if (videoData?.status === 'error') {
+            clearInterval(pollInterval);
+            setFiles(prev => prev.map(f => f.id === file.id 
+              ? { ...f, status: 'error' as const }
+              : f
+            ));
+          } else {
+            // Increment fake progress while waiting
+            setFiles(prev => prev.map(f => f.id === file.id && f.status === 'processing'
+              ? { ...f, progress: Math.min(99, (f.progress || 0) + Math.random() * 8) }
+              : f
+            ));
+          }
+        }, 3000);
+
+        // Safety clear after 5 minutes
+        setTimeout(() => clearInterval(pollInterval), 300000);
+      } catch (err) {
+        console.error('Batch process error:', err);
+        setFiles(prev => prev.map(f => f.id === file.id 
+          ? { ...f, status: 'error' as const }
+          : f
+        ));
+      }
+    }));
+
     setShowBatchModal(true);
   };
 

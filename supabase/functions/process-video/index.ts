@@ -86,7 +86,8 @@ serve(async (req) => {
     const { error: uploadError } = await supabase.storage
       .from('edited-videos')
       .upload(editedFilePath, videoFile, {
-        contentType: videoFile.type
+        contentType: videoFile.type,
+        upsert: true
       })
 
     if (uploadError) {
@@ -107,8 +108,7 @@ serve(async (req) => {
       .from('uploadvideo')
       .update({
         edited_file_path: editedFilePath,
-        status: 'completed',
-        processed_at: new Date().toISOString()
+        status: 'completed'
       })
       .eq('id', videoId)
 
