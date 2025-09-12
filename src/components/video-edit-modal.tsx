@@ -33,6 +33,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   const [selectedMask, setSelectedMask] = useState<string | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -241,7 +242,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   const handleSave = () => {
     console.log('Save clicked, blur masks count:', blurMasks.length);
     console.log('All blur masks:', blurMasks);
-    
+
     if (blurMasks.length === 0) {
       toast({
         title: "No blur masks",
@@ -250,11 +251,65 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       });
       return;
     }
-    
-    onSaveEdit(blurMasks);
+
+    const videoEl = videoRef.current;
+    const containerEl = containerRef.current;
+
+    if (!videoEl || !containerEl || !videoEl.videoWidth || !videoEl.videoHeight) {
+      // Fallback: save as-is
+      onSaveEdit(blurMasks);
+      toast({
+        title: "Video saved",
+        description: `${blurMasks.length} blur effect(s) will be applied during processing`
+      });
+      onClose();
+      return;
+    }
+
+    // Convert container coordinates to intrinsic video pixel coordinates
+    const containerWidth = containerEl.clientWidth;
+    const containerHeight = containerEl.clientHeight;
+    const videoWidth = videoEl.videoWidth;
+    const videoHeight = videoEl.videoHeight;
+
+    const scale = Math.min(containerWidth / videoWidth, containerHeight / videoHeight);
+    const displayedWidth = videoWidth * scale;
+    const displayedHeight = videoHeight * scale;
+    const offsetLeft = (containerWidth - displayedWidth) / 2;
+    const offsetTop = (containerHeight - displayedHeight) / 2;
+
+    const scaleX = videoWidth / displayedWidth;
+    const scaleY = videoHeight / displayedHeight;
+
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+    const transformed = blurMasks.map((m) => {
+      // Clamp mask within displayed video area
+      const x1 = clamp(m.x, offsetLeft, offsetLeft + displayedWidth);
+      const y1 = clamp(m.y, offsetTop, offsetTop + displayedHeight);
+      const x2 = clamp(m.x + m.width, offsetLeft, offsetLeft + displayedWidth);
+      const y2 = clamp(m.y + m.height, offsetTop, offsetTop + displayedHeight);
+
+      const wDisp = Math.max(1, x2 - x1);
+      const hDisp = Math.max(1, y2 - y1);
+
+      let xV = Math.round((x1 - offsetLeft) * scaleX);
+      let yV = Math.round((y1 - offsetTop) * scaleY);
+      let wV = Math.round(wDisp * scaleX);
+      let hV = Math.round(hDisp * scaleY);
+
+      xV = clamp(xV, 0, videoWidth - 1);
+      yV = clamp(yV, 0, videoHeight - 1);
+      wV = clamp(wV, 1, videoWidth - xV);
+      hV = clamp(hV, 1, videoHeight - yV);
+
+      return { ...m, x: xV, y: yV, width: wV, height: hV };
+    });
+
+    onSaveEdit(transformed);
     toast({
       title: "Video saved",
-      description: `${blurMasks.length} blur effect(s) will be applied during processing`
+      description: `${transformed.length} blur effect(s) will be applied during processing`
     });
     onClose();
   };

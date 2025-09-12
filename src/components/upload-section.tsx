@@ -315,115 +315,115 @@ export const UploadSection = () => {
   const handleSaveEdit = async (masks: BlurMask[]) => {
     if (editingFile && editingFile.dbId) {
       try {
-        // Update database with blur masks and set status to processing
-        const { error } = await supabase
+        // Mark as processing in DB and save masks
+        const { error: dbError } = await supabase
           .from('uploadvideo')
-          .update({
-            blur_masks: masks as any, // Cast to any for JSONB compatibility
-            status: 'processing'
-          })
+          .update({ blur_masks: masks as any, status: 'processing' })
           .eq('id', editingFile.dbId);
 
-        if (error) {
-          console.error('Error updating video:', error);
-          toast({
-            title: "Save failed",
-            description: "Failed to save edits to backend",
-            variant: "destructive"
-          });
-          return;
+        if (dbError) {
+          throw dbError;
         }
 
-        // Update local state to show processing
+        // Update local UI
         setFiles(prev => prev.map(file => 
           file.id === editingFile.id 
-            ? { 
-                ...file, 
-                blurMasks: masks, 
-                status: 'processing' as const,
-                progress: 0
-              }
+            ? { ...file, blurMasks: masks, status: 'processing' as const, progress: 0 }
             : file
         ));
-        
-        // Call edge function to process video with blur effects
-        const { data, error: functionError } = await supabase.functions.invoke('process-video', {
-          body: {
-            videoId: editingFile.dbId,
-            blurMasks: masks
-          }
-        });
 
-        if (functionError) {
-          console.error('Video processing error:', functionError);
-          // Update status to error
-          setFiles(prev => prev.map(file => 
-            file.id === editingFile.id 
-              ? { ...file, status: 'error' as const }
-              : file
-          ));
-          toast({
-            title: "Processing failed",
-            description: "Failed to process video with blur effects",
-            variant: "destructive"
+        // Dynamically load ffmpeg.wasm
+        const ffmpegModule: any = await import('@ffmpeg/ffmpeg');
+        const createFFmpeg = ffmpegModule.createFFmpeg;
+        const fetchFile = ffmpegModule.fetchFile;
+        const ffmpeg = createFFmpeg({ log: true });
+        await ffmpeg.load();
+
+        // Write input video
+        await ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(editingFile.file));
+
+        // Build filter_complex from masks (coordinates are in intrinsic video pixels)
+        const buildFilter = (m: BlurMask[]) => {
+          let parts: string[] = [];
+          let last = '[0:v]';
+          m.forEach((mask, i) => {
+            const base = `base${i}`;
+            const blur = `blur${i}`;
+            const crop = `crop${i}`;
+            const out = `out${i}`;
+            const x = Math.max(0, Math.round(mask.x));
+            const y = Math.max(0, Math.round(mask.y));
+            const w = Math.max(1, Math.round(mask.width));
+            const h = Math.max(1, Math.round(mask.height));
+            const radius = Math.max(1, Math.round(mask.intensity));
+            const enable = `between(t,${mask.startTime},${mask.endTime})`;
+
+            parts.push(`${last}split[${base}][${blur}]`);
+            parts.push(`[${blur}]boxblur=${radius}:${radius},crop=${w}:${h}:${x}:${y}[${crop}]`);
+            parts.push(`[${base}][${crop}]overlay=${x}:${y}:enable='${enable}'[${out}]`);
+            last = `[${out}]`;
           });
-          return;
-        }
+          return { filter: parts.join('; '), out: last };
+        };
 
-        toast({
-          title: "Processing started",
-          description: "Video is being processed with blur effects. This may take a few minutes."
-        });
+        const { filter, out } = buildFilter(masks);
 
-        // Start polling for completion
-        const pollInterval = setInterval(async () => {
-          const { data: videoData } = await supabase
-            .from('uploadvideo')
-            .select('status, edited_file_path')
-            .eq('id', editingFile.dbId)
-            .single();
+        const args = [
+          '-i', 'input.mp4',
+          '-filter_complex', filter,
+          '-map', out,
+          '-map', '0:a?',
+          '-c:v', 'libx264',
+          '-preset', 'fast',
+          '-c:a', 'aac',
+          '-movflags', '+faststart',
+          '-y', 'output.mp4'
+        ];
 
-          if (videoData?.status === 'completed' && videoData.edited_file_path) {
-            clearInterval(pollInterval);
-            setFiles(prev => prev.map(file => 
-              file.id === editingFile.id 
-                ? { 
-                    ...file, 
-                    status: 'completed' as const,
-                    progress: 100,
-                    editedFilePath: videoData.edited_file_path
-                  }
-                : file
-            ));
-            toast({
-              title: "Video processed",
-              description: "Video with blur effects is ready for download"
-            });
-          } else if (videoData?.status === 'error') {
-            clearInterval(pollInterval);
-            setFiles(prev => prev.map(file => 
-              file.id === editingFile.id 
-                ? { ...file, status: 'error' as const }
-                : file
-            ));
-            toast({
-              title: "Processing failed",
-              description: "Video processing failed. Please try again.",
-              variant: "destructive"
-            });
-          }
-        }, 3000); // Poll every 3 seconds
+        await ffmpeg.run(...args);
 
-        // Clear interval after 5 minutes to prevent infinite polling
-        setTimeout(() => clearInterval(pollInterval), 300000);
+        const data = ffmpeg.FS('readFile', 'output.mp4');
+        const blob = new Blob([data.buffer], { type: 'video/mp4' });
 
+        // Upload to storage
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        if (!userId) throw new Error('Not authenticated');
+
+        const fileExt = editingFile.file.name.split('.').pop();
+        const editedFileName = `edited_${editingFile.id}.${fileExt}`;
+        const editedFilePath = `${userId}/${editedFileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('edited-videos')
+          .upload(editedFilePath, blob, { contentType: 'video/mp4', upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        // Update DB to completed
+        const { error: updateError } = await supabase
+          .from('uploadvideo')
+          .update({ edited_file_path: editedFilePath, status: 'completed' })
+          .eq('id', editingFile.dbId);
+
+        if (updateError) throw updateError;
+
+        // Update UI
+        setFiles(prev => prev.map(file => 
+          file.id === editingFile.id 
+            ? { ...file, status: 'completed' as const, progress: 100, editedFilePath }
+            : file
+        ));
+
+        toast({ title: 'Video processed', description: 'Blur effects applied and video is ready to download' });
       } catch (error) {
-        console.error('Error saving edits:', error);
-        toast({
-          title: "Save failed",
-          description: "Failed to save edits",
-          variant: "destructive"
-        });
+        console.error('Error processing video:', error);
+        setFiles(prev => prev.map(file => 
+          file.id === editingFile?.id 
+            ? { ...file, status: 'error' as const }
+            : file
+        ));
+        toast({ title: 'Processing failed', description: 'Failed to process video with blur effects', variant: 'destructive' });
       }
     }
     setEditingFile(null);
