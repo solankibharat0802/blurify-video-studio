@@ -382,20 +382,19 @@ export const UploadSection = () => {
           });
         }
       } catch (error) {
-        console.error('Error processing video:', error);
-        setFiles(prev => prev.map(file => 
-          file.id === editingFile?.id 
-            ? { ...file, status: 'error' as const }
-            : file
-        ));
-        toast({ title: 'Processing failed', description: 'Failed to process video with blur effects', variant: 'destructive' });
+        console.error('Error getting video URL:', error);
+        toast({
+          title: "Error", 
+          description: "Failed to get video URL for editing", 
+          variant: "destructive"
+        });
       }
     }
     setEditingFile(null);
   };
 
   const handleProcessAll = async () => {
-    // Start processing all videos that have blur masks configured (client-side)
+    // Send all videos with blur masks to Python backend for batch processing
     const toProcess = files.filter(f => f.dbId && f.blurMasks && f.blurMasks.length > 0);
 
     if (toProcess.length === 0) {
@@ -407,161 +406,76 @@ export const UploadSection = () => {
       return;
     }
 
-    // Optimistically set status to processing
+    // Set all videos to processing state
     setFiles(prev => prev.map(f => toProcess.some(tp => tp.id === f.id)
       ? { ...f, status: 'processing' as const, progress: 0 }
       : f
     ));
 
     try {
-      const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-      const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
-      toast({ title: 'Initializing video processor', description: 'Downloading FFmpeg engine (first run may take ~20s)...' });
-      const ffmpeg = new FFmpeg();
-      console.log('FFmpeg: starting load');
-      try {
-        const baseURL = '/ffmpeg';
-        await ffmpeg.load({
-          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-          workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
-        });
-        console.log('FFmpeg: load finished');
-      } catch (e) {
-        console.error('FFmpeg load failed', e);
-        toast({ title: 'Processor init failed', description: 'Could not load FFmpeg. Please retry.', variant: 'destructive' });
-        throw e;
-      }
-      ffmpeg.on('log', ({ message }) => console.log('FFmpeg log:', message));
-      toast({ title: 'Processing started', description: `Processing ${toProcess.length} video(s)...` });
+      toast({ 
+        title: 'Processing videos', 
+        description: `Sending ${toProcess.length} video(s) to backend for processing...` 
+      });
 
-      // Common filter builder
-      const buildFilter = (m: BlurMask[]) => {
-        let parts: string[] = [];
-        let last = '[0:v]';
-        m.forEach((mask, i) => {
-          const base = `base${i}`;
-          const blur = `blur${i}`;
-          const crop = `crop${i}`;
-          const out = `out${i}`;
-          const x = Math.max(0, Math.round(mask.x));
-          const y = Math.max(0, Math.round(mask.y));
-          const w = Math.max(1, Math.round(mask.width));
-          const h = Math.max(1, Math.round(mask.height));
-          const radius = Math.max(1, Math.round(mask.intensity));
-          const enable = `between(t,${mask.startTime},${mask.endTime})`;
-
-          parts.push(`${last}split[${base}][${blur}]`);
-          parts.push(`[${blur}]boxblur=${radius}:${radius},crop=${w}:${h}:${x}:${y}[${crop}]`);
-          parts.push(`[${base}][${crop}]overlay=${x}:${y}:enable='${enable}'[${out}]`);
-          last = `[${out}]`;
-        });
-        return { filter: parts.join('; '), out: last };
-      };
-
-      // Get user once
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) throw new Error('Not authenticated');
-
-      // Process sequentially to avoid memory spikes
+      // Send each video to Python backend
       for (const file of toProcess) {
         try {
-          // Update DB to processing with masks
-          await supabase
-            .from('uploadvideo')
-            .update({ blur_masks: file.blurMasks as any, status: 'processing' })
-            .eq('id', file.dbId);
-
-          // Prepare input
-          try { await ffmpeg.deleteFile('input.mp4'); } catch {}
-          try { await ffmpeg.deleteFile('output.mp4'); } catch {}
-          await ffmpeg.writeFile('input.mp4', await fetchFile(file.file));
-
-          const { filter, out } = buildFilter(file.blurMasks!);
-          console.log('Using FFmpeg filter_complex:', filter, 'out:', out);
-
-          // Wire progress to UI
-          ffmpeg.on('progress', ({ progress }) => {
-            setFiles(prev => prev.map(f => f.id === file.id && f.status === 'processing'
-              ? { ...f, progress: Math.max(1, Math.min(99, Math.round(progress * 100))) }
-              : f
-            ));
+          const response = await fetch('http://127.0.0.1:5000/process-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              videoId: file.dbId,
+              blurMasks: file.blurMasks
+            })
           });
 
-          const args = [
-            '-i', 'input.mp4',
-            '-filter_complex', filter,
-            '-map', out,
-            '-map', '0:a?',
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '28',
-            '-c:a', 'aac',
-            '-movflags', '+faststart',
-            '-y', 'output.mp4'
-          ];
-
-          try {
-            await ffmpeg.exec(args);
-          } catch (e) {
-            // Fallback to mpeg4 if libx264 is unavailable in this build
-            console.warn('FFmpeg x264 failed, falling back to mpeg4', e);
-            await ffmpeg.exec([
-              '-i', 'input.mp4',
-              '-filter_complex', filter,
-              '-map', out,
-              '-map', '0:a?',
-              '-c:v', 'mpeg4',
-              '-q:v', '5',
-              '-c:a', 'aac',
-              '-movflags', '+faststart',
-              '-y', 'output.mp4'
-            ]);
+          if (!response.ok) {
+            throw new Error(`Backend processing failed for ${file.file.name}: ${response.status}`);
           }
 
-          const data = await ffmpeg.readFile('output.mp4') as Uint8Array;
-          const blob = new Blob([data], { type: 'video/mp4' });
+          const result = await response.json();
+          
+          if (!result.success) {
+            throw new Error(result.message || 'Backend processing failed');
+          }
 
-          const fileExt = file.file.name.split('.').pop();
-          const editedFileName = `edited_${file.id}.${fileExt}`;
-          const editedFilePath = `${userId}/${editedFileName}`;
-
-          const { error: uploadError } = await supabase.storage
-            .from('edited-videos')
-            .upload(editedFilePath, blob, { contentType: 'video/mp4', upsert: true });
-          if (uploadError) throw uploadError;
-
-          await supabase
-            .from('uploadvideo')
-            .update({ edited_file_path: editedFilePath, status: 'completed' })
-            .eq('id', file.dbId);
-
-          setFiles(prev => prev.map(f => f.id === file.id
-            ? { ...f, status: 'completed' as const, progress: 100, editedFilePath }
-            : f
+          // Update file status to indicate backend processing started
+          setFiles(prev => prev.map(f => 
+            f.id === file.id 
+              ? { ...f, status: 'processing' as const, progress: 10 }
+              : f
           ));
 
-          // Cleanup in-memory files
-          try { await ffmpeg.deleteFile('input.mp4'); } catch {}
-          try { await ffmpeg.deleteFile('output.mp4'); } catch {}
-        } catch (err) {
-          console.error('Processing error for file', file.id, err);
-          setFiles(prev => prev.map(f => f.id === file.id
-            ? { ...f, status: 'error' as const }
-            : f
+        } catch (error) {
+          console.error(`Error processing video ${file.file.name}:`, error);
+          setFiles(prev => prev.map(f => 
+            f.id === file.id 
+              ? { ...f, status: 'error' as const }
+              : f
           ));
-          await supabase
-            .from('uploadvideo')
-            .update({ status: 'error' })
-            .eq('id', file.dbId);
+          toast({
+            title: 'Processing failed',
+            description: `Failed to process ${file.file.name}. Please try again.`,
+            variant: 'destructive'
+          });
         }
       }
 
-      toast({ title: 'Batch processing complete', description: 'Finished processing videos.' });
-    } catch (err) {
-      console.error('Batch initialize error:', err);
-      toast({ title: 'Processing failed', description: 'Failed to initialize processor', variant: 'destructive' });
+      toast({ 
+        title: 'Batch processing started', 
+        description: 'Videos are being processed on the backend. Check back in a few minutes.' 
+      });
+
+    } catch (error) {
+      console.error('Batch processing error:', error);
+      toast({
+        title: 'Batch processing failed',
+        description: 'An error occurred during batch processing',
+        variant: 'destructive'
+      });
     }
 
     setShowBatchModal(true);
