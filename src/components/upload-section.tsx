@@ -332,14 +332,15 @@ export const UploadSection = () => {
             : file
         ));
 
-        // Dynamically load ffmpeg.wasm + core URLs (bundled)
+        // Dynamically load ffmpeg.wasm
         const { FFmpeg } = await import('@ffmpeg/ffmpeg');
         const { fetchFile } = await import('@ffmpeg/util');
-        const { default: coreURL } = await import('@ffmpeg/core?url');
-        const { default: wasmURL } = await import('@ffmpeg/core/ffmpeg-core.wasm?url');
-        const { default: workerURL } = await import('@ffmpeg/core/ffmpeg-core.worker.js?url');
         const ffmpeg = new FFmpeg();
-        await ffmpeg.load({ coreURL, wasmURL, workerURL });
+        await ffmpeg.load({
+          coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
+          wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
+          workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.worker.js'
+        });
 
         // Ensure clean FS and write input
         try { await ffmpeg.deleteFile('input.mp4'); } catch {}
@@ -483,11 +484,12 @@ export const UploadSection = () => {
     try {
       const { FFmpeg } = await import('@ffmpeg/ffmpeg');
       const { fetchFile } = await import('@ffmpeg/util');
-      const { default: coreURL } = await import('@ffmpeg/core?url');
-      const { default: wasmURL } = await import('@ffmpeg/core/ffmpeg-core.wasm?url');
-      const { default: workerURL } = await import('@ffmpeg/core/ffmpeg-core.worker.js?url');
       const ffmpeg = new FFmpeg();
-      await ffmpeg.load({ coreURL, wasmURL, workerURL });
+      await ffmpeg.load({
+        coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
+        wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
+        workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.worker.js'
+      });
 
       // Common filter builder
       const buildFilter = (m: BlurMask[]) => {
