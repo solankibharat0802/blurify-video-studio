@@ -332,13 +332,18 @@ export const UploadSection = () => {
             : file
         ));
 
-        // Dynamically load ffmpeg.wasm
+        // Dynamically load ffmpeg.wasm + core URLs (bundled)
         const { FFmpeg } = await import('@ffmpeg/ffmpeg');
         const { fetchFile } = await import('@ffmpeg/util');
+        const { default: coreURL } = await import('@ffmpeg/core?url');
+        const { default: wasmURL } = await import('@ffmpeg/core/ffmpeg-core.wasm?url');
+        const { default: workerURL } = await import('@ffmpeg/core/ffmpeg-core.worker.js?url');
         const ffmpeg = new FFmpeg();
-        await ffmpeg.load();
+        await ffmpeg.load({ coreURL, wasmURL, workerURL });
 
-        // Write input video
+        // Ensure clean FS and write input
+        try { await ffmpeg.deleteFile('input.mp4'); } catch {}
+        try { await ffmpeg.deleteFile('output.mp4'); } catch {}
         await ffmpeg.writeFile('input.mp4', await fetchFile(editingFile.file));
 
         // Build filter_complex from masks (coordinates are in intrinsic video pixels)
@@ -367,22 +372,50 @@ export const UploadSection = () => {
 
         const { filter, out } = buildFilter(masks);
 
+        // Update UI progress from FFmpeg
+        ffmpeg.on('progress', ({ progress }) => {
+          setFiles(prev => prev.map(file =>
+            file.id === editingFile.id && file.status === 'processing'
+              ? { ...file, progress: Math.max(1, Math.min(99, Math.round(progress * 100))) }
+              : file
+          ));
+        });
+
         const args = [
           '-i', 'input.mp4',
           '-filter_complex', filter,
           '-map', out,
           '-map', '0:a?',
           '-c:v', 'libx264',
-          '-preset', 'fast',
+          '-preset', 'ultrafast',
+          '-crf', '28',
           '-c:a', 'aac',
           '-movflags', '+faststart',
           '-y', 'output.mp4'
         ];
 
-        await ffmpeg.exec(args);
+        try {
+          await ffmpeg.exec(args);
+        } catch (e) {
+          console.warn('FFmpeg x264 failed, falling back to mpeg4', e);
+          await ffmpeg.exec([
+            '-i', 'input.mp4',
+            '-filter_complex', filter,
+            '-map', out,
+            '-map', '0:a?',
+            '-c:v', 'mpeg4',
+            '-q:v', '5',
+            '-c:a', 'aac',
+            '-movflags', '+faststart',
+            '-y', 'output.mp4'
+          ]);
+        }
 
         const data = await ffmpeg.readFile('output.mp4') as Uint8Array;
         const blob = new Blob([data], { type: 'video/mp4' });
+
+        // Cleanup input buffer to free memory early
+        try { await ffmpeg.deleteFile('input.mp4'); } catch {}
 
         // Upload to storage
         const { data: userData } = await supabase.auth.getUser();
@@ -450,8 +483,11 @@ export const UploadSection = () => {
     try {
       const { FFmpeg } = await import('@ffmpeg/ffmpeg');
       const { fetchFile } = await import('@ffmpeg/util');
+      const { default: coreURL } = await import('@ffmpeg/core?url');
+      const { default: wasmURL } = await import('@ffmpeg/core/ffmpeg-core.wasm?url');
+      const { default: workerURL } = await import('@ffmpeg/core/ffmpeg-core.worker.js?url');
       const ffmpeg = new FFmpeg();
-      await ffmpeg.load();
+      await ffmpeg.load({ coreURL, wasmURL, workerURL });
 
       // Common filter builder
       const buildFilter = (m: BlurMask[]) => {
@@ -512,7 +548,8 @@ export const UploadSection = () => {
             '-map', out,
             '-map', '0:a?',
             '-c:v', 'libx264',
-            '-preset', 'fast',
+            '-preset', 'ultrafast',
+            '-crf', '28',
             '-c:a', 'aac',
             '-movflags', '+faststart',
             '-y', 'output.mp4'
@@ -557,6 +594,10 @@ export const UploadSection = () => {
             ? { ...f, status: 'completed' as const, progress: 100, editedFilePath }
             : f
           ));
+
+          // Cleanup in-memory files
+          try { await ffmpeg.deleteFile('input.mp4'); } catch {}
+          try { await ffmpeg.deleteFile('output.mp4'); } catch {}
         } catch (err) {
           console.error('Processing error for file', file.id, err);
           setFiles(prev => prev.map(f => f.id === file.id
