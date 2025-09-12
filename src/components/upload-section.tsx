@@ -332,29 +332,9 @@ export const UploadSection = () => {
             : file
         ));
 
-        // Prefer server-side processing via Edge Function first
-        try {
-          toast({ title: 'Processing on server', description: 'Starting server-side processing...' });
-          const { data: invokeData, error: invokeError } = await supabase.functions.invoke('process-video', {
-            body: { videoId: editingFile.dbId, blurMasks: masks }
-          });
-          if (invokeError) throw invokeError as any;
-          const editedFilePath = (invokeData as any)?.editedFilePath;
-          if (!editedFilePath) throw new Error('Server did not return edited file path');
-
-          // Update UI to completed
-          setFiles(prev => prev.map(file => 
-            file.id === editingFile.id 
-              ? { ...file, status: 'completed' as const, progress: 100, editedFilePath }
-              : file
-          ));
-
-          toast({ title: 'Video processed', description: 'Server finished processing your video.' });
-          return; // Skip local processing fallback
-        } catch (serverErr) {
-          console.error('Server processing failed, falling back to local ffmpeg', serverErr);
-        }
-
+        // Server-side FFmpeg is not supported in Edge runtime; process locally
+        toast({ title: 'Processing locally', description: 'Applying blur effects in your browser...' });
+        console.log('Skipping server processing; running FFmpeg.wasm locally');
         // Dynamically load ffmpeg.wasm
         const { FFmpeg } = await import('@ffmpeg/ffmpeg');
         const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
@@ -925,7 +905,7 @@ export const UploadSection = () => {
         key={editingFile ? `${editingFile.file.name}_${editingFile.file.size}_${editingFile.file.lastModified}` : 'no-file'}
         isOpen={!!editingFile}
         onClose={() => setEditingFile(null)}
-        file={editingFile ? { ...editingFile.file, supabaseUrl: editingFile.supabaseUrl } : null}
+        file={editingFile ? editingFile.file : null}
         onSaveEdit={handleSaveEdit}
       />
 
