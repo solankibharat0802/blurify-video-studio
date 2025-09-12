@@ -299,17 +299,6 @@ export const UploadSection = () => {
           });
         }
       } catch (error) {
-        console.error('Error processing video:', error);
-        setFiles(prev => prev.map(file => 
-          file.id === editingFile?.id 
-            ? { ...file, status: 'error' as const }
-            : file
-        ));
-        toast({ title: 'Processing failed', description: 'Failed to process video with blur effects', variant: 'destructive' });
-      }
-    }
-    setEditingFile(null);
-  };
         console.error('Error getting video URL:', error);
         toast({
           title: "Error", 
