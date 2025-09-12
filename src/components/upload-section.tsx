@@ -336,11 +336,15 @@ export const UploadSection = () => {
         const { FFmpeg } = await import('@ffmpeg/ffmpeg');
         const { fetchFile } = await import('@ffmpeg/util');
         const ffmpeg = new FFmpeg();
+        toast({ title: 'Initializing video processor', description: 'Downloading FFmpeg engine (first run may take ~20s)...' });
+        console.log('FFmpeg: starting load');
         await ffmpeg.load({
-          coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
-          wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
-          workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.worker.js'
+          coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+          wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
+          workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.worker.js'
         });
+        console.log('FFmpeg: load finished');
+        ffmpeg.on('log', ({ message }) => console.log('FFmpeg log:', message));
 
         // Ensure clean FS and write input
         try { await ffmpeg.deleteFile('input.mp4'); } catch {}
@@ -484,12 +488,17 @@ export const UploadSection = () => {
     try {
       const { FFmpeg } = await import('@ffmpeg/ffmpeg');
       const { fetchFile } = await import('@ffmpeg/util');
+      toast({ title: 'Initializing video processor', description: 'Downloading FFmpeg engine (first run may take ~20s)...' });
       const ffmpeg = new FFmpeg();
+      console.log('FFmpeg: starting load');
       await ffmpeg.load({
-        coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
-        wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
-        workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.worker.js'
+        coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+        wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
+        workerURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.worker.js'
       });
+      console.log('FFmpeg: load finished');
+      ffmpeg.on('log', ({ message }) => console.log('FFmpeg log:', message));
+      toast({ title: 'Processing started', description: `Processing ${toProcess.length} video(s)...` });
 
       // Common filter builder
       const buildFilter = (m: BlurMask[]) => {
