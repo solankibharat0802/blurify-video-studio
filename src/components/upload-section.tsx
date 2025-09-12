@@ -299,6 +299,17 @@ export const UploadSection = () => {
           });
         }
       } catch (error) {
+        console.error('Error processing video:', error);
+        setFiles(prev => prev.map(file => 
+          file.id === editingFile?.id 
+            ? { ...file, status: 'error' as const }
+            : file
+        ));
+        toast({ title: 'Processing failed', description: 'Failed to process video with blur effects', variant: 'destructive' });
+      }
+    }
+    setEditingFile(null);
+  };
         console.error('Error getting video URL:', error);
         toast({
           title: "Error", 
@@ -332,139 +343,55 @@ export const UploadSection = () => {
             : file
         ));
 
-        // Server-side FFmpeg is not supported in Edge runtime; process locally
-        toast({ title: 'Processing locally', description: 'Applying blur effects in your browser...' });
-        console.log('Skipping server processing; running FFmpeg.wasm locally');
-        // Dynamically load ffmpeg.wasm
-        const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-        const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
-        const ffmpeg = new FFmpeg();
-        toast({ title: 'Initializing video processor', description: 'Downloading FFmpeg engine (first run may take ~20s)...' });
-        console.log('FFmpeg: starting load');
+        // Call your Python backend for video processing
         try {
-          // Use blob URLs to avoid COOP/COEP requirements
-          const baseURL = '/ffmpeg';
-          await ffmpeg.load({
-            coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-            wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-            workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+          toast({ title: 'Processing video', description: 'Sending to backend for processing...' });
+          
+          const response = await fetch('YOUR_PYTHON_BACKEND_URL/process-video', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              videoId: editingFile.dbId,
+              blurMasks: masks
+            })
           });
-          console.log('FFmpeg: load finished');
-        } catch (e) {
-          console.error('FFmpeg load failed', e);
-          toast({ title: 'Processor init failed', description: 'Could not load FFmpeg. Please retry.', variant: 'destructive' });
-          throw e;
-        }
-        ffmpeg.on('log', ({ message }) => console.log('FFmpeg log:', message));
 
-        // Ensure clean FS and write input
-        try { await ffmpeg.deleteFile('input.mp4'); } catch {}
-        try { await ffmpeg.deleteFile('output.mp4'); } catch {}
-        await ffmpeg.writeFile('input.mp4', await fetchFile(editingFile.supabaseUrl ? editingFile.supabaseUrl : editingFile.file));
+          if (!response.ok) {
+            throw new Error(`Backend processing failed: ${response.status}`);
+          }
 
-        // Build filter_complex from masks (coordinates are in intrinsic video pixels)
-        const buildFilter = (m: BlurMask[]) => {
-          let parts: string[] = [];
-          let last = '[0:v]';
-          m.forEach((mask, i) => {
-            const base = `base${i}`;
-            const blur = `blur${i}`;
-            const crop = `crop${i}`;
-            const out = `out${i}`;
-            const x = Math.max(0, Math.round(mask.x));
-            const y = Math.max(0, Math.round(mask.y));
-            const w = Math.max(1, Math.round(mask.width));
-            const h = Math.max(1, Math.round(mask.height));
-            const radius = Math.max(1, Math.round(mask.intensity));
-            const enable = `between(t,${mask.startTime},${mask.endTime})`;
+          const result = await response.json();
+          
+          if (result.success) {
+            // Update UI to processing state
+            setFiles(prev => prev.map(file => 
+              file.id === editingFile.id 
+                ? { ...file, status: 'processing' as const, progress: 10 }
+                : file
+            ));
 
-            parts.push(`${last}split[${base}][${blur}]`);
-            parts.push(`[${blur}]boxblur=${radius}:${radius},crop=${w}:${h}:${x}:${y}[${crop}]`);
-            parts.push(`[${base}][${crop}]overlay=${x}:${y}:enable='${enable}'[${out}]`);
-            last = `[${out}]`;
-          });
-          return { filter: parts.join('; '), out: last };
-        };
-
-        const { filter, out } = buildFilter(masks);
-        console.log('Using FFmpeg filter_complex:', filter, 'out:', out);
-
-        // Update UI progress from FFmpeg
-        ffmpeg.on('progress', ({ progress }) => {
-          setFiles(prev => prev.map(file =>
-            file.id === editingFile.id && file.status === 'processing'
-              ? { ...file, progress: Math.max(1, Math.min(99, Math.round(progress * 100))) }
+            toast({ 
+              title: 'Processing started', 
+              description: 'Your video is being processed on the backend. Check back in a few minutes.' 
+            });
+          } else {
+            throw new Error(result.message || 'Backend processing failed');
+          }
+        } catch (error) {
+          console.error('Backend processing error:', error);
+          setFiles(prev => prev.map(file => 
+            file.id === editingFile?.id 
+              ? { ...file, status: 'error' as const }
               : file
           ));
-        });
-
-        const args = [
-          '-i', 'input.mp4',
-          '-filter_complex', filter,
-          '-map', out,
-          '-map', '0:a?',
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-crf', '28',
-          '-c:a', 'aac',
-          '-movflags', '+faststart',
-          '-y', 'output.mp4'
-        ];
-
-        try {
-          await ffmpeg.exec(args);
-        } catch (e) {
-          console.warn('FFmpeg x264 failed, falling back to mpeg4', e);
-          await ffmpeg.exec([
-            '-i', 'input.mp4',
-            '-filter_complex', filter,
-            '-map', out,
-            '-map', '0:a?',
-            '-c:v', 'mpeg4',
-            '-q:v', '5',
-            '-c:a', 'aac',
-            '-movflags', '+faststart',
-            '-y', 'output.mp4'
-          ]);
+          toast({ 
+            title: 'Processing failed', 
+            description: 'Backend processing failed. Please try again.', 
+            variant: 'destructive' 
+          });
         }
-
-        const data = await ffmpeg.readFile('output.mp4') as Uint8Array;
-        const blob = new Blob([data], { type: 'video/mp4' });
-
-        // Cleanup input buffer to free memory early
-        try { await ffmpeg.deleteFile('input.mp4'); } catch {}
-
-        // Upload to storage
-        const { data: userData } = await supabase.auth.getUser();
-        const userId = userData?.user?.id;
-        if (!userId) throw new Error('Not authenticated');
-
-        const fileExt = editingFile.file.name.split('.').pop();
-        const editedFileName = `edited_${editingFile.id}.${fileExt}`;
-        const editedFilePath = `${userId}/${editedFileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('edited-videos')
-          .upload(editedFilePath, blob, { contentType: 'video/mp4', upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        // Update DB to completed
-        const { error: updateError } = await supabase
-          .from('uploadvideo')
-          .update({ edited_file_path: editedFilePath, status: 'completed' })
-          .eq('id', editingFile.dbId);
-
-        if (updateError) throw updateError;
-
-        // Update UI
-        setFiles(prev => prev.map(file => 
-          file.id === editingFile.id 
-            ? { ...file, status: 'completed' as const, progress: 100, editedFilePath }
-            : file
-        ));
-
-        toast({ title: 'Video processed', description: 'Blur effects applied and video is ready to download' });
       } catch (error) {
         console.error('Error processing video:', error);
         setFiles(prev => prev.map(file => 
