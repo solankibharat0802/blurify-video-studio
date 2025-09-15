@@ -5,10 +5,9 @@ import logging
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from supabase import create_client, Client
-import requests
-from typing import List, Dict, Any
 import uuid
+from typing import List, Dict, Any
+from werkzeug.utils import secure_filename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,13 +32,15 @@ def add_pna_header(response):
     response.headers['Access-Control-Allow-Methods'] = request.headers.get('Access-Control-Request-Method', 'GET, POST, OPTIONS')
     return response
 
-# Supabase configuration
-SUPABASE_URL = os.getenv('SUPABASE_URL', "https://zywjsozsmnjajwirkcsu.supabase.co")
-SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+# Video storage configuration
+UPLOAD_FOLDER = 'uploads'
+PROCESSED_FOLDER = 'processed'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
 # In-memory storage for processing status (use Redis in production)
 processing_status = {}
+uploaded_videos = {}
 
 class BlurMask:
     def __init__(self, data: Dict[str, Any]):
@@ -52,35 +53,13 @@ class BlurMask:
         self.end_time = data.get('endTime', 0)
         self.intensity = data.get('intensity', 10)
 
-def download_video_from_supabase(file_path: str) -> bytes:
-    """Download video from Supabase storage"""
-    try:
-        response = supabase.storage.from_('original-videos').download(file_path)
-        return response
-    except Exception as e:
-        logger.error(f"Error downloading video: {str(e)}")
-        raise
+def get_video_path(video_id: str) -> str:
+    """Get the file path for a video"""
+    return os.path.join(UPLOAD_FOLDER, f"{video_id}.mp4")
 
-def upload_video_to_supabase(video_bytes: bytes, file_path: str) -> bool:
-    """Upload processed video to Supabase storage"""
-    try:
-        supabase.storage.from_('edited-videos').upload(file_path, video_bytes)
-        return True
-    except Exception as e:
-        logger.error(f"Error uploading video: {str(e)}")
-        return False
-
-def update_video_status(video_id: str, status: str, edited_file_path: str = None):
-    """Update video status in Supabase database"""
-    try:
-        update_data = {'status': status}
-        if edited_file_path:
-            update_data['edited_file_path'] = edited_file_path
-            
-        supabase.table('uploadvideo').update(update_data).eq('id', video_id).execute()
-        logger.info(f"Updated video {video_id} status to {status}")
-    except Exception as e:
-        logger.error(f"Error updating video status: {str(e)}")
+def get_processed_video_path(video_id: str) -> str:
+    """Get the file path for processed video"""
+    return os.path.join(PROCESSED_FOLDER, f"{video_id}_processed.mp4")
 
 def process_video_with_blur(video_bytes: bytes, blur_masks: List[BlurMask]) -> bytes:
     """
@@ -122,6 +101,46 @@ def health_check():
         'timestamp': datetime.now().isoformat()
     })
 
+@app.route('/upload-video', methods=['POST'])
+def upload_video():
+    """Upload video endpoint"""
+    try:
+        if 'video' not in request.files:
+            return jsonify({'success': False, 'message': 'No video file provided'}), 400
+        
+        file = request.files['video']
+        video_id = request.form.get('videoId')
+        
+        if not video_id:
+            video_id = str(uuid.uuid4())
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'}), 400
+        
+        # Save the uploaded file
+        filename = secure_filename(f"{video_id}.mp4")
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(file_path)
+        
+        # Store video metadata
+        uploaded_videos[video_id] = {
+            'filename': file.filename,
+            'file_path': file_path,
+            'uploaded_at': datetime.now().isoformat(),
+            'size': os.path.getsize(file_path)
+        }
+        
+        logger.info(f"Video uploaded successfully: {video_id}")
+        return jsonify({
+            'success': True,
+            'videoId': video_id,
+            'message': 'Video uploaded successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading video: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/process-video', methods=['POST'])
 def process_video():
     """Main video processing endpoint"""
@@ -132,6 +151,10 @@ def process_video():
         
         if not video_id:
             return jsonify({'success': False, 'message': 'Video ID is required'}), 400
+            
+        # Check if video exists
+        if video_id not in uploaded_videos:
+            return jsonify({'success': False, 'message': 'Video not found'}), 404
             
         logger.info(f"Processing video {video_id} with {len(blur_masks_data)} blur masks")
         
@@ -145,24 +168,16 @@ def process_video():
             'started_at': datetime.now().isoformat()
         }
         
-        # Get video metadata from database
-        video_response = supabase.table('uploadvideo').select('*').eq('id', video_id).execute()
-        
-        if not video_response.data:
-            return jsonify({'success': False, 'message': 'Video not found'}), 404
-            
-        video_data = video_response.data[0]
-        original_file_path = video_data['original_file_path']
-        
-        # Update status to processing in database
-        update_video_status(video_id, 'processing')
+        # Get video file path
+        video_file_path = uploaded_videos[video_id]['file_path']
         
         # Update progress
         processing_status[video_id]['progress'] = 20
         
-        # Download original video from Supabase
-        logger.info(f"Downloading video from {original_file_path}")
-        video_bytes = download_video_from_supabase(original_file_path)
+        # Read original video file
+        logger.info(f"Reading video from {video_file_path}")
+        with open(video_file_path, 'rb') as f:
+            video_bytes = f.read()
         
         # Update progress
         processing_status[video_id]['progress'] = 40
@@ -174,47 +189,61 @@ def process_video():
         # Update progress
         processing_status[video_id]['progress'] = 80
         
-        # Generate output file path
-        user_id = video_data['user_id']
-        original_filename = video_data['original_filename']
-        name_without_ext = os.path.splitext(original_filename)[0]
-        ext = os.path.splitext(original_filename)[1]
-        edited_file_path = f"{user_id}/{name_without_ext}_edited{ext}"
+        # Save processed video
+        processed_file_path = get_processed_video_path(video_id)
+        with open(processed_file_path, 'wb') as f:
+            f.write(processed_video_bytes)
         
-        # Upload processed video to Supabase
-        logger.info(f"Uploading processed video to {edited_file_path}")
-        upload_success = upload_video_to_supabase(processed_video_bytes, edited_file_path)
+        # Update progress
+        processing_status[video_id] = {
+            'status': 'completed',
+            'progress': 100,
+            'completed_at': datetime.now().isoformat(),
+            'processed_file_path': processed_file_path
+        }
         
-        if upload_success:
-            # Update database with completed status
-            update_video_status(video_id, 'completed', edited_file_path)
-            processing_status[video_id] = {
-                'status': 'completed',
-                'progress': 100,
-                'completed_at': datetime.now().isoformat()
-            }
-            logger.info(f"Video processing completed for {video_id}")
-            return jsonify({'success': True, 'message': 'Video processed successfully'})
-        else:
-            # Update database with error status
-            update_video_status(video_id, 'error')
-            processing_status[video_id] = {
-                'status': 'error',
-                'progress': 0,
-                'error': 'Upload failed'
-            }
-            return jsonify({'success': False, 'message': 'Failed to upload processed video'}), 500
+        logger.info(f"Video processing completed for {video_id}")
+        return jsonify({
+            'success': True, 
+            'message': 'Video processed successfully',
+            'downloadUrl': f'/download/{video_id}'
+        })
             
     except Exception as e:
         logger.error(f"Error in process_video: {str(e)}")
         if video_id:
-            update_video_status(video_id, 'error')
             processing_status[video_id] = {
                 'status': 'error',
                 'progress': 0,
                 'error': str(e)
             }
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/download/<video_id>', methods=['GET'])
+def download_processed_video(video_id: str):
+    """Download processed video"""
+    try:
+        if video_id not in processing_status:
+            return jsonify({'error': 'Video not found'}), 404
+        
+        status = processing_status[video_id]
+        if status['status'] != 'completed':
+            return jsonify({'error': 'Video processing not completed'}), 400
+        
+        processed_file_path = get_processed_video_path(video_id)
+        if not os.path.exists(processed_file_path):
+            return jsonify({'error': 'Processed video file not found'}), 404
+        
+        return send_file(
+            processed_file_path,
+            as_attachment=True,
+            download_name=f"{video_id}_processed.mp4",
+            mimetype='video/mp4'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error downloading video: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/video-status/<video_id>', methods=['GET'])
 def get_video_status(video_id: str):
@@ -224,14 +253,11 @@ def get_video_status(video_id: str):
         if video_id in processing_status:
             return jsonify(processing_status[video_id])
         
-        # Check database status
-        video_response = supabase.table('uploadvideo').select('status').eq('id', video_id).execute()
+        # Check if video was uploaded
+        if video_id in uploaded_videos:
+            return jsonify({'status': 'uploaded', 'progress': 0})
         
-        if not video_response.data:
-            return jsonify({'status': 'not_found'}), 404
-            
-        db_status = video_response.data[0]['status']
-        return jsonify({'status': db_status, 'progress': 100 if db_status == 'completed' else 0})
+        return jsonify({'status': 'not_found'}), 404
         
     except Exception as e:
         logger.error(f"Error getting video status: {str(e)}")
@@ -252,7 +278,6 @@ def cancel_processing(video_id: str):
     try:
         if video_id in processing_status:
             processing_status[video_id]['status'] = 'cancelled'
-            update_video_status(video_id, 'cancelled')
             return jsonify({'success': True, 'message': 'Processing cancelled'})
         else:
             return jsonify({'success': False, 'message': 'Video not in processing queue'}), 404
@@ -260,32 +285,10 @@ def cancel_processing(video_id: str):
         logger.error(f"Error cancelling processing: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/webhook/video-complete', methods=['POST'])
-def video_complete_webhook():
-    """Webhook endpoint for external processing completion"""
-    try:
-        data = request.get_json()
-        video_id = data.get('videoId')
-        success = data.get('success', False)
-        output_path = data.get('outputPath')
-        
-        if success and output_path:
-            update_video_status(video_id, 'completed', output_path)
-        else:
-            update_video_status(video_id, 'error')
-            
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Error in webhook: {str(e)}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
 if __name__ == '__main__':
-    # Check for required environment variables
-    if SUPABASE_SERVICE_KEY == "your-service-role-key-here":
-        logger.warning("⚠️  Please set your actual Supabase service role key!")
-        
     logger.info("Starting Flask video processing server...")
-    logger.info(f"Supabase URL: {SUPABASE_URL}")
+    logger.info(f"Upload folder: {UPLOAD_FOLDER}")
+    logger.info(f"Processed folder: {PROCESSED_FOLDER}")
     
     # Run the Flask app
     app.run(host='127.0.0.1', port=5000, debug=True)

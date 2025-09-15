@@ -6,7 +6,6 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { VideoEditModal } from "./video-edit-modal";
 import { BatchDownloadModal } from "./batch-download-modal";
-import { supabase } from "@/integrations/supabase/client";
 import { getBackendUrl } from "@/lib/config";
 
 interface UploadedFile {
@@ -16,10 +15,8 @@ interface UploadedFile {
   status: 'pending' | 'processing' | 'completed' | 'error';
   progress?: number;
   blurMasks?: BlurMask[];
-  dbId?: string;
-  originalFilePath?: string;
-  editedFilePath?: string;
-  supabaseUrl?: string; // Add this for the signed URL
+  videoId?: string;
+  downloadUrl?: string;
 }
 
 interface BlurMask {
@@ -60,65 +57,25 @@ export const UploadSection = () => {
     });
   };
 
-  const uploadToSupabase = async (file: File, fileId: string): Promise<string | null> => {
+  const uploadToBackend = async (file: File, fileId: string): Promise<string | null> => {
     try {
-      // Get current user from Supabase auth
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
+      const formData = new FormData();
+      formData.append('video', file);
+      formData.append('videoId', fileId);
       
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${fileId}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
+      const response = await fetch(`${getBackendUrl()}/upload-video`, {
+        method: 'POST',
+        body: formData
+      });
 
-      const { error } = await supabase.storage
-        .from('original-videos')
-        .upload(filePath, file);
-
-      if (error) {
-        console.error('Upload error:', error);
-        return null;
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status}`);
       }
 
-      return filePath;
+      const result = await response.json();
+      return result.videoId;
     } catch (error) {
       console.error('Upload error:', error);
-      return null;
-    }
-  };
-
-  const saveToDatabase = async (file: File, filePath: string, fileId: string) => {
-    try {
-      const videoDuration = await getVideoDuration(file);
-      
-      // Get current user from Supabase auth
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-      
-      const { data, error } = await supabase
-        .from('uploadvideo')
-        .insert({
-          user_id: user.id,
-          original_filename: file.name,
-          original_file_path: filePath,
-          file_size: file.size,
-          duration: videoDuration,
-          status: 'uploaded'
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Database error:', error);
-        return null;
-      }
-
-      return data.id;
-    } catch (error) {
-      console.error('Database error:', error);
       return null;
     }
   };
@@ -157,16 +114,10 @@ export const UploadSection = () => {
           const fileId = Math.random().toString(36).substr(2, 9);
           const preview = await createVideoPreview(file);
           
-          // Upload to Supabase storage
-          const filePath = await uploadToSupabase(file, fileId);
-          if (!filePath) {
+          // Upload to Python backend
+          const videoId = await uploadToBackend(file, fileId);
+          if (!videoId) {
             throw new Error('Upload failed');
-          }
-
-          // Save to database
-          const dbId = await saveToDatabase(file, filePath, fileId);
-          if (!dbId) {
-            throw new Error('Database save failed');
           }
 
           return {
@@ -174,8 +125,7 @@ export const UploadSection = () => {
             file,
             preview,
             status: 'pending' as const,
-            dbId,
-            originalFilePath: filePath
+            videoId
           };
         } catch (error) {
           console.error('Error processing file:', error);
@@ -225,16 +175,10 @@ export const UploadSection = () => {
             const fileId = Math.random().toString(36).substr(2, 9);
             const preview = await createVideoPreview(file);
             
-            // Upload to Supabase storage
-            const filePath = await uploadToSupabase(file, fileId);
-            if (!filePath) {
+            // Upload to Python backend
+            const videoId = await uploadToBackend(file, fileId);
+            if (!videoId) {
               throw new Error('Upload failed');
-            }
-
-            // Save to database
-            const dbId = await saveToDatabase(file, filePath, fileId);
-            if (!dbId) {
-              throw new Error('Database save failed');
             }
 
             return {
@@ -242,8 +186,7 @@ export const UploadSection = () => {
               file,
               preview,
               status: 'pending' as const,
-              dbId,
-              originalFilePath: filePath
+              videoId
             };
           } catch (error) {
             console.error('Error processing file:', error);
@@ -278,54 +221,12 @@ export const UploadSection = () => {
   };
 
   const handleEditVideo = async (file: UploadedFile) => {
-    // Get the video URL from Supabase storage
-    if (file.originalFilePath) {
-      try {
-        const { data } = await supabase.storage
-          .from('original-videos')
-          .createSignedUrl(file.originalFilePath, 3600); // 1 hour expiry
-        
-        if (data?.signedUrl) {
-          // Create a modified file object with the Supabase URL
-          const fileWithUrl = {
-            ...file,
-            supabaseUrl: data.signedUrl
-          };
-          setEditingFile(fileWithUrl);
-        } else {
-          toast({
-            title: "Error",
-            description: "Could not load video from storage",
-            variant: "destructive"
-          });
-        }
-      } catch (error) {
-        console.error('Error getting video URL:', error);
-        toast({
-          title: "Error", 
-          description: "Could not load video from storage",
-          variant: "destructive"
-        });
-      }
-    } else {
-      // Fallback to original file if no storage path
-      setEditingFile(file);
-    }
+    setEditingFile(file);
   };
 
   const handleSaveEdit = async (masks: BlurMask[]) => {
-    if (editingFile && editingFile.dbId) {
+    if (editingFile && editingFile.videoId) {
       try {
-        // Mark as processing in DB and save masks
-        const { error: dbError } = await supabase
-          .from('uploadvideo')
-          .update({ blur_masks: masks as any, status: 'processing' })
-          .eq('id', editingFile.dbId);
-
-        if (dbError) {
-          throw dbError;
-        }
-
         // Update local UI
         setFiles(prev => prev.map(file => 
           file.id === editingFile.id 
@@ -333,7 +234,7 @@ export const UploadSection = () => {
             : file
         ));
 
-        // Call your Python backend for video processing
+        // Call Python backend for video processing
         try {
           toast({ title: 'Processing video', description: 'Sending to backend for processing...' });
           
@@ -343,7 +244,7 @@ export const UploadSection = () => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              videoId: editingFile.dbId,
+              videoId: editingFile.videoId,
               blurMasks: masks
             })
           });
@@ -358,13 +259,13 @@ export const UploadSection = () => {
             // Update UI to processing state
             setFiles(prev => prev.map(file => 
               file.id === editingFile.id 
-                ? { ...file, status: 'processing' as const, progress: 10 }
+                ? { ...file, status: 'processing' as const, progress: 10, downloadUrl: result.downloadUrl }
                 : file
             ));
 
             toast({ 
               title: 'Processing started', 
-              description: 'Your video is being processed on the backend. Check back in a few minutes.' 
+              description: 'Your video is being processed.' 
             });
           } else {
             throw new Error(result.message || 'Backend processing failed');
@@ -383,10 +284,10 @@ export const UploadSection = () => {
           });
         }
       } catch (error) {
-        console.error('Error getting video URL:', error);
+        console.error('Error processing video:', error);
         toast({
           title: "Error", 
-          description: "Failed to get video URL for editing", 
+          description: "Failed to process video", 
           variant: "destructive"
         });
       }
@@ -396,7 +297,7 @@ export const UploadSection = () => {
 
   const handleProcessAll = async () => {
     // Send all videos with blur masks to Python backend for batch processing
-    const toProcess = files.filter(f => f.dbId && f.blurMasks && f.blurMasks.length > 0);
+    const toProcess = files.filter(f => f.videoId && f.blurMasks && f.blurMasks.length > 0);
 
     if (toProcess.length === 0) {
       toast({
@@ -428,7 +329,7 @@ export const UploadSection = () => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              videoId: file.dbId,
+              videoId: file.videoId,
               blurMasks: file.blurMasks
             })
           });
@@ -446,7 +347,7 @@ export const UploadSection = () => {
           // Update file status to indicate backend processing started
           setFiles(prev => prev.map(f => 
             f.id === file.id 
-              ? { ...f, status: 'processing' as const, progress: 10 }
+              ? { ...f, status: 'processing' as const, progress: 10, downloadUrl: result.downloadUrl }
               : f
           ));
 
@@ -467,7 +368,7 @@ export const UploadSection = () => {
 
       toast({ 
         title: 'Batch processing started', 
-        description: 'Videos are being processed on the backend. Check back in a few minutes.' 
+        description: 'Videos are being processed on the backend.' 
       });
 
     } catch (error) {
@@ -483,7 +384,7 @@ export const UploadSection = () => {
   };
 
   const handleDownloadAll = async () => {
-    const completedFiles = files.filter(f => f.status === 'completed');
+    const completedFiles = files.filter(f => f.status === 'completed' && f.downloadUrl);
     
     if (completedFiles.length === 0) {
       toast({
@@ -494,21 +395,18 @@ export const UploadSection = () => {
       return;
     }
 
-    // Download from Supabase storage
+    // Download processed videos from backend
     completedFiles.forEach(async (file, index) => {
       setTimeout(async () => {
-        if (file.editedFilePath) {
+        if (file.downloadUrl) {
           try {
-            const { data, error } = await supabase.storage
-              .from('edited-videos')
-              .download(file.editedFilePath);
-
-            if (error) {
-              console.error('Download error:', error);
-              return;
+            const response = await fetch(`${getBackendUrl()}${file.downloadUrl}`);
+            if (!response.ok) {
+              throw new Error('Download failed');
             }
-
-            const url = URL.createObjectURL(data);
+            
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = `edited_${file.file.name}`;
@@ -634,47 +532,46 @@ export const UploadSection = () => {
                        </div>
                      )}
                      
-                     {uploadedFile.status === 'completed' && uploadedFile.editedFilePath && (
-                       <Button 
-                         variant="hero" 
-                         size="sm"
-                         onClick={async () => {
-                           try {
-                             const { data, error } = await supabase.storage
-                               .from('edited-videos')
-                               .download(uploadedFile.editedFilePath!);
+                      {uploadedFile.status === 'completed' && uploadedFile.downloadUrl && (
+                        <Button 
+                          variant="hero" 
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(`${getBackendUrl()}${uploadedFile.downloadUrl}`);
 
-                             if (error) {
-                               console.error('Download error:', error);
-                               toast({
-                                 title: "Download failed",
-                                 description: "Could not download the edited video",
-                                 variant: "destructive"
-                               });
-                               return;
-                             }
+                              if (!response.ok) {
+                                console.error('Download error:', response.status);
+                                toast({
+                                  title: "Download failed",
+                                  description: "Could not download the edited video",
+                                  variant: "destructive"
+                                });
+                                return;
+                              }
 
-                             const url = URL.createObjectURL(data);
-                             const a = document.createElement('a');
-                             a.href = url;
-                             a.download = `edited_${uploadedFile.file.name}`;
-                             document.body.appendChild(a);
-                             a.click();
-                             document.body.removeChild(a);
-                             setTimeout(() => URL.revokeObjectURL(url), 1000);
-                             
-                             toast({
-                               title: "Download started",
-                               description: "Edited video download started"
-                             });
-                           } catch (error) {
-                             console.error('Download error:', error);
-                             toast({
-                               title: "Download failed",
-                               description: "Could not download the edited video",
-                               variant: "destructive"
-                             });
-                           }
+                              const blob = await response.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `edited_${uploadedFile.file.name}`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              setTimeout(() => URL.revokeObjectURL(url), 1000);
+                              
+                              toast({
+                                title: "Download started",
+                                description: "Edited video download started"
+                              });
+                            } catch (error) {
+                              console.error('Download error:', error);
+                              toast({
+                                title: "Download failed",
+                                description: "Could not download the edited video",
+                                variant: "destructive"
+                              });
+                            }
                          }}
                        >
                          <Download className="w-4 h-4" />
