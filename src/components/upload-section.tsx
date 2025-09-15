@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { VideoEditModal } from "./video-edit-modal";
 import { BatchDownloadModal } from "./batch-download-modal";
 import { supabase } from "@/integrations/supabase/client";
+import { getBackendUrl } from "@/lib/config";
 
 interface UploadedFile {
   id: string;
@@ -336,7 +337,7 @@ export const UploadSection = () => {
         try {
           toast({ title: 'Processing video', description: 'Sending to backend for processing...' });
           
-          const response = await fetch('http://localhost:5000/process-video', {
+          const response = await fetch(`${getBackendUrl()}/process-video`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -421,7 +422,7 @@ export const UploadSection = () => {
       // Send each video to Python backend
       for (const file of toProcess) {
         try {
-          const response = await fetch('http://localhost:5000/process-video', {
+          const response = await fetch(`${getBackendUrl()}/process-video`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

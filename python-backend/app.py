@@ -15,7 +15,23 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+# Configure CORS broadly for dev, including Private Network Access preflight
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
+
+# Add header for Chrome Private Network Access so public origins can reach localhost
+@app.after_request
+def add_pna_header(response):
+    response.headers['Access-Control-Allow-Private-Network'] = 'true'  # For PNA preflight
+    # Ensure CORS origin echoes back for non-credentialed requests
+    origin = request.headers.get('Origin')
+    if origin:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Vary'] = 'Origin'
+    else:
+        response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = request.headers.get('Access-Control-Request-Headers', 'Content-Type')
+    response.headers['Access-Control-Allow-Methods'] = request.headers.get('Access-Control-Request-Method', 'GET, POST, OPTIONS')
+    return response
 
 # Supabase configuration
 SUPABASE_URL = os.getenv('SUPABASE_URL', "https://zywjsozsmnjajwirkcsu.supabase.co")
