@@ -18,8 +18,8 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
 # Supabase configuration
-SUPABASE_URL = "https://zywjsozsmnjajwirkcsu.supabase.co"
-SUPABASE_SERVICE_KEY = "your-service-role-key-here"  # Replace with your actual service role key
+SUPABASE_URL = os.getenv('SUPABASE_URL', "https://zywjsozsmnjajwirkcsu.supabase.co")
+SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # In-memory storage for processing status (use Redis in production)
