@@ -336,7 +336,7 @@ export const UploadSection = () => {
         try {
           toast({ title: 'Processing video', description: 'Sending to backend for processing...' });
           
-          const response = await fetch('http://127.0.0.1:5000/process-video', {
+          const response = await fetch('http://localhost:5000/process-video', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -421,7 +421,7 @@ export const UploadSection = () => {
       // Send each video to Python backend
       for (const file of toProcess) {
         try {
-          const response = await fetch('http://127.0.0.1:5000/process-video', {
+          const response = await fetch('http://localhost:5000/process-video', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
