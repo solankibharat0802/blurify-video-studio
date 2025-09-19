@@ -4,31 +4,9 @@ import { Card } from "@/components/ui/card";
 import { Upload, File, X, Play, Download } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { VideoEditModal } from "./video-edit-modal";
+import { VideoEditModal, BlurMask, UploadedFile } from "./video-edit-modal";
 import { BatchDownloadModal } from "./batch-download-modal";
 import { getBackendUrl } from "@/lib/config";
-
-interface UploadedFile {
-  id: string;
-  file: File;
-  preview?: string;
-  status: 'pending' | 'processing' | 'completed' | 'error';
-  progress?: number;
-  blurMasks?: BlurMask[];
-  videoId?: string;
-  downloadUrl?: string;
-}
-
-interface BlurMask {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  startTime: number;
-  endTime: number;
-  intensity: number;
-}
 
 export const UploadSection = () => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
