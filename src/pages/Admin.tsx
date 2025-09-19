@@ -1,13 +1,10 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/header";
-import { HeroSection } from "@/components/hero-section";
-import { UploadSection } from "@/components/upload-section";
-import { FeaturesSection } from "@/components/features-section";
-import { SubscriptionPanel } from "@/components/subscription-panel";
+import { AdminPanel } from "@/components/admin-panel";
 import { useAuth } from "@/hooks/useAuth";
 
-const Index = () => {
+const Admin = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -35,20 +32,19 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <HeroSection />
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <UploadSection />
+      <main className="container mx-auto px-4 py-8">
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+            <p className="text-muted-foreground">
+              Manage users, subscriptions, and monitor platform usage
+            </p>
           </div>
-          <div className="lg:col-span-1">
-            <SubscriptionPanel />
-          </div>
+          <AdminPanel />
         </div>
-      </div>
-      <FeaturesSection />
+      </main>
     </div>
   );
 };
 
-export default Index;
+export default Admin;

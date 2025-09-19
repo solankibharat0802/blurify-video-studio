@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Settings } from "lucide-react";
 
 export const Header = () => {
   const { user, signOut, loading } = useAuth();
@@ -42,6 +42,12 @@ export const Header = () => {
                   <DropdownMenuItem disabled>
                     <User className="mr-2 h-4 w-4" />
                     <span className="truncate">{user.email}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin">
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Admin Panel</span>
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />

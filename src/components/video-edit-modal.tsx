@@ -13,10 +13,17 @@ export interface BlurMask {
   intensity: number;
 }
 
+interface UploadedFile {
+  videoId: string;
+  name: string;
+  size: number;
+  status: string;
+}
+
 interface VideoEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  file: File | null;
+  file: UploadedFile | null;
   onSaveEdit: (masks: BlurMask[]) => void;
 }
 
@@ -36,14 +43,13 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   // Reset state when the modal is opened or the file changes
   useEffect(() => {
     if (isOpen && file) {
-      const url = URL.createObjectURL(file);
-      if (videoRef.current) videoRef.current.src = url;
-      setIsPlaying(false);
-      setCurrentTime(0);
+      // For now, we'll need to handle video loading differently since we have videoId instead of File
+      // This would require fetching the video from the backend or storing the original file
+      setIsPlaying(false); 
+      setCurrentTime(0); 
       setDuration(0);
-      setBlurMasks([]);
+      setBlurMasks([]); 
       setSelectedMaskId(null);
-      return () => URL.revokeObjectURL(url);
     }
   }, [isOpen, file]);
 
