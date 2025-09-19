@@ -44,6 +44,12 @@ export const Header = () => {
                     <span className="truncate">{user.email}</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
+                    <Link to="/subscription">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Subscription</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link to="/admin">
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Admin Panel</span>

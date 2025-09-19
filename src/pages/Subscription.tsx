@@ -1,12 +1,10 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/header";
-import { HeroSection } from "@/components/hero-section";
-import { UploadSection } from "@/components/upload-section";
-import { FeaturesSection } from "@/components/features-section";
+import { SubscriptionPanel } from "@/components/subscription-panel";
 import { useAuth } from "@/hooks/useAuth";
 
-const Index = () => {
+const Subscription = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -34,13 +32,21 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <HeroSection />
-      <div className="container mx-auto px-4 py-8">
-        <UploadSection />
-      </div>
-      <FeaturesSection />
+      <main className="container mx-auto px-4 py-8">
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Subscription</h1>
+            <p className="text-muted-foreground">
+              Manage your subscription and billing
+            </p>
+          </div>
+          <div className="max-w-2xl">
+            <SubscriptionPanel />
+          </div>
+        </div>
+      </main>
     </div>
   );
 };
 
-export default Index;
+export default Subscription;
