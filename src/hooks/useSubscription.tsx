@@ -53,9 +53,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     refreshSubscription();
   }, [user, session]);
 
-  // Auto-refresh every minute
+  // Auto-refresh every 5 minutes (less aggressive)
   useEffect(() => {
-    const interval = setInterval(refreshSubscription, 60000);
+    const interval = setInterval(refreshSubscription, 300000);
     return () => clearInterval(interval);
   }, [user, session]);
 

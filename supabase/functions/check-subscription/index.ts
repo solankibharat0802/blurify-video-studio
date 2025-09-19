@@ -67,42 +67,30 @@ serve(async (req) => {
 
     const conversionsLimit = isActive ? 100 : 0; // Pro plan gets 100 conversions
 
-    if (isActive) {
-      const { error: upsertError } = await supabaseClient
-        .from('subscriptions')
-        .upsert({
-          user_id: user.id,
-          stripe_subscription_id: latestSub?.id || null,
-          stripe_customer_id: customerId,
-          status,
-          plan_type: 'pro',
-          conversions_limit: conversionsLimit,
-          current_period_start: latestSub?.current_period_start
-            ? new Date(latestSub.current_period_start * 1000).toISOString()
-            : null,
-          current_period_end: subscriptionEnd,
-        });
-      if (upsertError) {
-        console.error('Error upserting active subscription:', upsertError);
-        throw new Error(`Failed to update subscription: ${upsertError.message}`);
-      }
-    } else {
-      const { error: upsertError } = await supabaseClient
-        .from('subscriptions')
-        .upsert({
-          user_id: user.id,
-          stripe_customer_id: customerId,
-          status: 'inactive',
-          plan_type: 'free',
-          conversions_limit: 0,
-          current_period_start: null,
-          current_period_end: null,
-          stripe_subscription_id: latestSub?.id || null,
-        });
-      if (upsertError) {
-        console.error('Error upserting free subscription:', upsertError);
-        throw new Error(`Failed to update subscription: ${upsertError.message}`);
-      }
+    // Update subscription with proper conflict resolution
+    const subscriptionData = {
+      user_id: user.id,
+      stripe_customer_id: customerId,
+      status: isActive ? status : 'inactive',
+      plan_type: isActive ? 'pro' : 'free',
+      conversions_limit: conversionsLimit,
+      current_period_start: isActive && latestSub?.current_period_start
+        ? new Date(latestSub.current_period_start * 1000).toISOString()
+        : null,
+      current_period_end: isActive ? subscriptionEnd : null,
+      stripe_subscription_id: latestSub?.id || null,
+    };
+
+    const { error: upsertError } = await supabaseClient
+      .from('subscriptions')
+      .upsert(subscriptionData, {
+        onConflict: 'user_id',
+        ignoreDuplicates: false
+      });
+
+    if (upsertError) {
+      console.error('Error updating subscription:', upsertError);
+      // Don't throw error, just log it and continue
     }
 
     const hasActiveSub = isActive;
