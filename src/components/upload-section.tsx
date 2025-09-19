@@ -20,7 +20,7 @@ export function UploadSection() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { canConvert, conversionsUsed, conversionsLimit, subscribed } = useSubscription();
+  const { canConvert, conversionsUsed, conversionsLimit, subscribed, refreshSubscription } = useSubscription();
   const { user, session } = useAuth();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,6 +103,9 @@ export function UploadSection() {
             conversions_used: conversionsUsed + 1
           })
           .eq('user_id', user.id);
+
+        // Refresh subscription data to update UI
+        await refreshSubscription();
       } catch (error) {
         console.error('Error logging conversion:', error);
       }
