@@ -63,16 +63,15 @@ export function AdminPanel() {
           email,
           full_name,
           is_admin,
-          created_at,
-          subscriptions!inner(
-            plan_type,
-            status,
-            conversions_limit,
-            conversions_used
-          )
-        `) as { data: any[] | null; error: any };
+          created_at
+        `);
 
       if (error) throw error;
+
+      // Get subscriptions data separately
+      const { data: subscriptionsData } = await supabase
+        .from('subscriptions')
+        .select('*');
 
       // Get conversion counts for each user
       const userIds = usersData?.map(u => u.user_id) || [];
@@ -87,18 +86,27 @@ export function AdminPanel() {
         return acc;
       }, {} as Record<string, number>) || {};
 
-      const formattedUsers = usersData?.map((user: any) => ({
-        id: user.user_id,
-        email: user.email,
-        full_name: user.full_name || user.email,
-        is_admin: user.is_admin,
-        plan_type: user.subscriptions?.[0]?.plan_type || 'free',
-        status: user.subscriptions?.[0]?.status || 'inactive',
-        conversions_limit: user.subscriptions?.[0]?.conversions_limit || 0,
-        conversions_used: user.subscriptions?.[0]?.conversions_used || 0,
-        conversion_count: conversionCountsMap[user.user_id] || 0,
-        created_at: user.created_at,
-      })) || [];
+      // Create subscriptions map
+      const subscriptionsMap = subscriptionsData?.reduce((acc, sub) => {
+        acc[sub.user_id] = sub;
+        return acc;
+      }, {} as Record<string, any>) || {};
+
+      const formattedUsers = usersData?.map((user: any) => {
+        const subscription = subscriptionsMap[user.user_id];
+        return {
+          id: user.user_id,
+          email: user.email,
+          full_name: user.full_name || user.email,
+          is_admin: user.is_admin,
+          plan_type: subscription?.plan_type || 'free',
+          status: subscription?.status || 'inactive',
+          conversions_limit: subscription?.conversions_limit || 0,
+          conversions_used: subscription?.conversions_used || 0,
+          conversion_count: conversionCountsMap[user.user_id] || 0,
+          created_at: user.created_at,
+        };
+      }) || [];
 
       setUsers(formattedUsers);
     } catch (error) {
