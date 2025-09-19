@@ -1,7 +1,9 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoEditModal } from "@/components/simple-video-edit-modal";
+import { MultipleVideoUpload } from "@/components/multiple-video-upload";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -113,55 +115,68 @@ export function UploadSection() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Upload Video</CardTitle>
-        <CardDescription>
-          Select a video file to apply blur effects
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-          <Button 
-            onClick={handleUploadClick}
-            disabled={uploading || (!subscribed && !canConvert)}
-            className="w-full"
-          >
-            {uploading ? 'Uploading...' : !subscribed ? 'Subscribe to Upload' : 'Upload Video'}
-          </Button>
-          
-          {!subscribed && (
-            <p className="text-sm text-muted-foreground text-center mt-2">
-              Subscribe to Pro plan to start converting videos
-            </p>
-          )}
-          
-          {subscribed && !canConvert && (
-            <p className="text-sm text-muted-foreground text-center mt-2">
-              You've used all {conversionsLimit} conversions this month
-            </p>
-          )}
-        </div>
+    <Tabs defaultValue="single" className="w-full">
+      <TabsList className="grid w-full grid-cols-2">
+        <TabsTrigger value="single">Single Video</TabsTrigger>
+        <TabsTrigger value="multiple">Multiple Videos</TabsTrigger>
+      </TabsList>
+      
+      <TabsContent value="single">
+        <Card>
+          <CardHeader>
+            <CardTitle>Upload Single Video</CardTitle>
+            <CardDescription>
+              Select a video file to apply blur effects
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <Button 
+                onClick={handleUploadClick}
+                disabled={uploading || (!subscribed && !canConvert)}
+                className="w-full"
+              >
+                {uploading ? 'Uploading...' : !subscribed ? 'Subscribe to Upload' : 'Upload Video'}
+              </Button>
+              
+              {!subscribed && (
+                <p className="text-sm text-muted-foreground text-center mt-2">
+                  Subscribe to Pro plan to start converting videos
+                </p>
+              )}
+              
+              {subscribed && !canConvert && (
+                <p className="text-sm text-muted-foreground text-center mt-2">
+                  You've used all {conversionsLimit} conversions this month
+                </p>
+              )}
+            </div>
 
-        {selectedFile && (
-          <VideoEditModal
-            isOpen={isModalOpen}
-            onClose={() => {
-              setIsModalOpen(false);
-              setSelectedFile(null);
-            }}
-            file={selectedFile}
-            onSaveEdit={(masks) => handleBlur(selectedFile.videoId, masks)}
-          />
-        )}
-      </CardContent>
-    </Card>
+            {selectedFile && (
+              <VideoEditModal
+                isOpen={isModalOpen}
+                onClose={() => {
+                  setIsModalOpen(false);
+                  setSelectedFile(null);
+                }}
+                file={selectedFile}
+                onSaveEdit={(masks) => handleBlur(selectedFile.videoId, masks)}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+      
+      <TabsContent value="multiple">
+        <MultipleVideoUpload />
+      </TabsContent>
+    </Tabs>
   );
 }
