@@ -49,39 +49,44 @@ serve(async (req) => {
     const customerId = customers.data[0].id;
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
-      status: "active",
       limit: 1,
     });
 
-    const hasActiveSub = subscriptions.data.length > 0;
-    let subscriptionEnd = null;
-    let conversionsLimit = 0;
+    const latestSub = subscriptions.data[0];
+    const status = latestSub?.status || 'canceled';
+    const isActive = ['active', 'trialing', 'past_due'].includes(status);
 
-    if (hasActiveSub) {
-      const subscription = subscriptions.data[0];
-      subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
-      conversionsLimit = 100; // Pro plan gets 100 conversions
+    let subscriptionEnd: string | null = null;
+    if (latestSub?.current_period_end) {
+      try {
+        subscriptionEnd = new Date(latestSub.current_period_end * 1000).toISOString();
+      } catch {
+        subscriptionEnd = null;
+      }
+    }
 
-      // Update subscription in database
+    const conversionsLimit = isActive ? 100 : 0; // Pro plan gets 100 conversions
+
+    if (isActive) {
       const { error: upsertError } = await supabaseClient
         .from('subscriptions')
         .upsert({
           user_id: user.id,
-          stripe_subscription_id: subscription.id,
+          stripe_subscription_id: latestSub?.id || null,
           stripe_customer_id: customerId,
-          status: 'active',
+          status,
           plan_type: 'pro',
-          conversions_limit: 100,
-          current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-          current_period_end: subscriptionEnd
+          conversions_limit: conversionsLimit,
+          current_period_start: latestSub?.current_period_start
+            ? new Date(latestSub.current_period_start * 1000).toISOString()
+            : null,
+          current_period_end: subscriptionEnd,
         });
-      
       if (upsertError) {
         console.error('Error upserting active subscription:', upsertError);
         throw new Error(`Failed to update subscription: ${upsertError.message}`);
       }
     } else {
-      // Update to free plan
       const { error: upsertError } = await supabaseClient
         .from('subscriptions')
         .upsert({
@@ -89,21 +94,25 @@ serve(async (req) => {
           stripe_customer_id: customerId,
           status: 'inactive',
           plan_type: 'free',
-          conversions_limit: 0
+          conversions_limit: 0,
+          current_period_start: null,
+          current_period_end: null,
+          stripe_subscription_id: latestSub?.id || null,
         });
-      
       if (upsertError) {
         console.error('Error upserting free subscription:', upsertError);
         throw new Error(`Failed to update subscription: ${upsertError.message}`);
       }
     }
 
+    const hasActiveSub = isActive;
+
     // Get current usage
     const { data: subscription } = await supabaseClient
       .from('subscriptions')
       .select('conversions_used')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     return new Response(JSON.stringify({
       subscribed: hasActiveSub,
