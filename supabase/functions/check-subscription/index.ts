@@ -63,7 +63,7 @@ serve(async (req) => {
       conversionsLimit = 100; // Pro plan gets 100 conversions
 
       // Update subscription in database
-      await supabaseClient
+      const { error: upsertError } = await supabaseClient
         .from('subscriptions')
         .upsert({
           user_id: user.id,
@@ -75,9 +75,14 @@ serve(async (req) => {
           current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
           current_period_end: subscriptionEnd
         });
+      
+      if (upsertError) {
+        console.error('Error upserting active subscription:', upsertError);
+        throw new Error(`Failed to update subscription: ${upsertError.message}`);
+      }
     } else {
       // Update to free plan
-      await supabaseClient
+      const { error: upsertError } = await supabaseClient
         .from('subscriptions')
         .upsert({
           user_id: user.id,
@@ -86,6 +91,11 @@ serve(async (req) => {
           plan_type: 'free',
           conversions_limit: 0
         });
+      
+      if (upsertError) {
+        console.error('Error upserting free subscription:', upsertError);
+        throw new Error(`Failed to update subscription: ${upsertError.message}`);
+      }
     }
 
     // Get current usage
