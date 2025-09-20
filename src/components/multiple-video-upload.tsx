@@ -42,12 +42,8 @@ export function MultipleVideoUpload() {
 
     // Check subscription limits
     const totalVideosToProcess = selectedFiles.length + files.length;
-    if (!subscribed) {
-      toast.error('Please subscribe to Pro plan to convert videos');
-      return;
-    }
-
-    if (totalVideosToProcess > conversionsLimit - conversionsUsed) {
+    
+    if (subscribed && totalVideosToProcess > conversionsLimit - conversionsUsed) {
       toast.error(`You can only convert ${conversionsLimit - conversionsUsed} more videos this month`);
       return;
     }
@@ -195,25 +191,21 @@ export function MultipleVideoUpload() {
           <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <Button 
             onClick={handleUploadClick}
-            disabled={uploading || (!subscribed && !canConvert)}
+            disabled={uploading}
             className="w-full mb-2"
           >
-            {uploading ? 'Uploading...' : !subscribed ? 'Subscribe to Upload' : 'Select Videos'}
+            {uploading ? 'Uploading...' : 'Select Videos'}
           </Button>
           
-          {!subscribed && (
+          {!subscribed ? (
             <p className="text-sm text-muted-foreground">
-              Subscribe to Pro plan to start converting videos
+              Free users can upload videos but need Pro plan to convert them
             </p>
-          )}
-          
-          {subscribed && !canConvert && (
+          ) : !canConvert ? (
             <p className="text-sm text-muted-foreground">
               You've used all {conversionsLimit} conversions this month
             </p>
-          )}
-
-          {subscribed && canConvert && (
+          ) : (
             <p className="text-sm text-muted-foreground">
               {conversionsLimit - conversionsUsed} conversions remaining this month
             </p>
