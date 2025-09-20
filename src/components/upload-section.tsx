@@ -115,7 +115,7 @@ export function UploadSection() {
   };
 
   return (
-    <Tabs defaultValue="single" className="w-full">
+    <Tabs defaultValue="multiple" className="w-full">
       <TabsList className="grid w-full grid-cols-2">
         <TabsTrigger value="single">Single Video</TabsTrigger>
         <TabsTrigger value="multiple">Multiple Videos</TabsTrigger>
