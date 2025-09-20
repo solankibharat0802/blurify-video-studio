@@ -7,17 +7,36 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { CouponInput } from "@/components/coupon-input";
 
 export function SubscriptionPanel() {
   const { session } = useAuth();
   const { subscribed, conversionsLimit, conversionsUsed, subscriptionEnd, loading, refreshSubscription } = useSubscription();
   const [upgrading, setUpgrading] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
 
   const handleUpgrade = async () => {
     if (!session) return;
     
     try {
       setUpgrading(true);
+      
+      // If coupon is applied, apply it first
+      if (appliedCoupon) {
+        const { data: couponData, error: couponError } = await supabase.functions.invoke('validate-coupon', {
+          body: { code: appliedCoupon.code, action: 'apply' },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (couponError || !couponData.valid) {
+          toast.error('Failed to apply coupon');
+          setUpgrading(false);
+          return;
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -35,6 +54,14 @@ export function SubscriptionPanel() {
     } finally {
       setUpgrading(false);
     }
+  };
+
+  const handleCouponApplied = (coupon: any) => {
+    setAppliedCoupon(coupon);
+  };
+
+  const handleCouponRemoved = () => {
+    setAppliedCoupon(null);
   };
 
   if (loading) {
@@ -77,7 +104,7 @@ export function SubscriptionPanel() {
         </div>
 
         {!subscribed && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
               Upgrade to Pro to get:
             </div>
@@ -86,12 +113,21 @@ export function SubscriptionPanel() {
               <li>• Priority processing</li>
               <li>• Advanced blur effects</li>
             </ul>
+            
+            <div className="space-y-3">
+              <div className="text-sm font-medium">Have a coupon?</div>
+              <CouponInput 
+                onCouponApplied={handleCouponApplied}
+                onCouponRemoved={handleCouponRemoved}
+              />
+            </div>
+
             <Button 
               onClick={handleUpgrade} 
               disabled={upgrading}
               className="w-full"
             >
-              {upgrading ? "Processing..." : "Upgrade to Pro - $9.99/month"}
+              {upgrading ? "Processing..." : `Upgrade to Pro${appliedCoupon ? ' (Discount Applied)' : ''} - $9.99/month`}
             </Button>
           </div>
         )}
