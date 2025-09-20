@@ -65,7 +65,18 @@ serve(async (req) => {
       }
     }
 
-    const conversionsLimit = isActive ? 100 : 0; // Pro plan gets 100 conversions
+    // Determine conversion limits based on price ID
+    let conversionsLimit = 0; // Default for inactive subscriptions
+    if (isActive && latestSub) {
+      const priceId = latestSub.items.data[0]?.price?.id;
+      if (priceId === "price_1S9KX4R0oSHMxg8M9LsdsJTo") { // Unlimited plan
+        conversionsLimit = 999999; // Very high number for "unlimited"
+      } else if (priceId === "price_1S9KWrR0oSHMxg8M2vB4CWVL") { // Basic plan ($5)
+        conversionsLimit = 100;
+      } else {
+        conversionsLimit = 100; // Default to basic plan limits
+      }
+    }
 
     // Update subscription with proper conflict resolution
     const subscriptionData = {

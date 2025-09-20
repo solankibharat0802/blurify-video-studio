@@ -24,6 +24,9 @@ serve(async (req) => {
     const user = data.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
 
+    // Get the price ID from request body
+    const { price_id = "price_1S9KX4R0oSHMxg8M9LsdsJTo" } = await req.json().catch(() => ({}));
+
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", { 
       apiVersion: "2025-08-27.basil" 
     });
@@ -40,7 +43,7 @@ serve(async (req) => {
       customer_email: customerId ? undefined : user.email,
       line_items: [
         {
-          price: "price_1S97iVR0oSHMxg8MAeeK5TEz",
+          price: price_id,
           quantity: 1,
         },
       ],

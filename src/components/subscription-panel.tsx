@@ -14,8 +14,26 @@ export function SubscriptionPanel() {
   const { subscribed, conversionsLimit, conversionsUsed, subscriptionEnd, loading, refreshSubscription } = useSubscription();
   const [upgrading, setUpgrading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  
+  // Subscription plans
+  const plans = {
+    basic: {
+      name: "Basic Plan",
+      price: "$5.00/month",
+      price_id: "price_1S9KWrR0oSHMxg8M2vB4CWVL",
+      conversions: 100,
+      features: ["100 video conversions per month", "Standard processing", "Basic blur effects"]
+    },
+    unlimited: {
+      name: "Unlimited Plan", 
+      price: "$9.99/month",
+      price_id: "price_1S9KX4R0oSHMxg8M9LsdsJTo",
+      conversions: "unlimited",
+      features: ["Unlimited video conversions", "Priority processing", "Advanced blur effects", "Premium support"]
+    }
+  };
 
-  const handleUpgrade = async () => {
+  const handleUpgrade = async (plan: 'basic' | 'unlimited') => {
     if (!session) return;
     
     try {
@@ -38,6 +56,7 @@ export function SubscriptionPanel() {
       }
 
       const { data, error } = await supabase.functions.invoke('create-checkout', {
+        body: { price_id: plans[plan].price_id },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -104,16 +123,7 @@ export function SubscriptionPanel() {
         </div>
 
         {!subscribed && (
-          <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">
-              Upgrade to Pro to get:
-            </div>
-            <ul className="text-sm space-y-1">
-              <li>• 100 video conversions per month</li>
-              <li>• Priority processing</li>
-              <li>• Advanced blur effects</li>
-            </ul>
-            
+          <div className="space-y-6">
             <div className="space-y-3">
               <div className="text-sm font-medium">Have a coupon?</div>
               <CouponInput 
@@ -122,13 +132,57 @@ export function SubscriptionPanel() {
               />
             </div>
 
-            <Button 
-              onClick={handleUpgrade} 
-              disabled={upgrading}
-              className="w-full"
-            >
-              {upgrading ? "Processing..." : `Upgrade to Pro${appliedCoupon ? ' (Discount Applied)' : ''} - $9.99/month`}
-            </Button>
+            <div className="grid gap-4">
+              {/* Basic Plan */}
+              <Card className="border-2">
+                <CardHeader className="pb-4">
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-lg">{plans.basic.name}</CardTitle>
+                    <Badge variant="outline">{plans.basic.price}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <ul className="text-sm space-y-1">
+                    {plans.basic.features.map((feature, index) => (
+                      <li key={index}>• {feature}</li>
+                    ))}
+                  </ul>
+                  <Button 
+                    onClick={() => handleUpgrade('basic')} 
+                    disabled={upgrading}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {upgrading ? "Processing..." : `Choose Basic${appliedCoupon ? ' (Discount Applied)' : ''}`}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Unlimited Plan */}
+              <Card className="border-2 border-primary">
+                <CardHeader className="pb-4">
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-lg">{plans.unlimited.name}</CardTitle>
+                    <Badge>{plans.unlimited.price}</Badge>
+                  </div>
+                  <Badge className="w-fit mb-2" variant="secondary">Most Popular</Badge>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <ul className="text-sm space-y-1">
+                    {plans.unlimited.features.map((feature, index) => (
+                      <li key={index}>• {feature}</li>
+                    ))}
+                  </ul>
+                  <Button 
+                    onClick={() => handleUpgrade('unlimited')} 
+                    disabled={upgrading}
+                    className="w-full"
+                  >
+                    {upgrading ? "Processing..." : `Choose Unlimited${appliedCoupon ? ' (Discount Applied)' : ''}`}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
 
