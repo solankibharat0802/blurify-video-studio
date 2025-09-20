@@ -24,8 +24,8 @@ serve(async (req) => {
     const user = data.user;
     if (!user?.email) throw new Error("User not authenticated or email not available");
 
-    // Get the price ID from request body
-    const { price_id = "price_1S9KX4R0oSHMxg8M9LsdsJTo" } = await req.json().catch(() => ({}));
+    // Get the price ID and coupon code from request body
+    const { price_id = "price_1S9KX4R0oSHMxg8M9LsdsJTo", coupon_code } = await req.json().catch(() => ({}));
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", { 
       apiVersion: "2025-08-27.basil" 
@@ -38,7 +38,8 @@ serve(async (req) => {
       customerId = customers.data[0].id;
     }
 
-    const session = await stripe.checkout.sessions.create({
+    // Prepare session configuration
+    const sessionConfig: any = {
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
       line_items: [
@@ -50,7 +51,26 @@ serve(async (req) => {
       mode: "subscription",
       success_url: `${req.headers.get("origin")}/subscription-success`,
       cancel_url: `${req.headers.get("origin")}/`,
-    });
+    };
+
+    // Apply coupon if provided
+    if (coupon_code) {
+      // Validate coupon exists in our database
+      const { data: coupon } = await supabaseClient
+        .from('coupons')
+        .select('stripe_coupon_id')
+        .eq('code', coupon_code.toUpperCase())
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (coupon?.stripe_coupon_id) {
+        sessionConfig.discounts = [{
+          coupon: coupon.stripe_coupon_id
+        }];
+      }
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

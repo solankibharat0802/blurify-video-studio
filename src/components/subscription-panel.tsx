@@ -39,24 +39,15 @@ export function SubscriptionPanel() {
     try {
       setUpgrading(true);
       
-      // If coupon is applied, apply it first
+      const requestBody: any = { price_id: plans[plan].price_id };
+      
+      // If coupon is applied, include it in the checkout request
       if (appliedCoupon) {
-        const { data: couponData, error: couponError } = await supabase.functions.invoke('validate-coupon', {
-          body: { code: appliedCoupon.code, action: 'apply' },
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        });
-
-        if (couponError || !couponData.valid) {
-          toast.error('Failed to apply coupon');
-          setUpgrading(false);
-          return;
-        }
+        requestBody.coupon_code = appliedCoupon.code;
       }
 
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { price_id: plans[plan].price_id },
+        body: requestBody,
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
