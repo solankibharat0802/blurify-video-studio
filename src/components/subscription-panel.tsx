@@ -11,7 +11,7 @@ import { CouponInput } from "@/components/coupon-input";
 
 export function SubscriptionPanel() {
   const { session } = useAuth();
-  const { subscribed, conversionsLimit, conversionsUsed, subscriptionEnd, loading, refreshSubscription } = useSubscription();
+  const { subscribed, conversionsLimit, conversionsUsed, subscriptionEnd, planName, loading, refreshSubscription } = useSubscription();
   const [upgrading, setUpgrading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   
@@ -95,7 +95,9 @@ export function SubscriptionPanel() {
     );
   }
 
-  const usagePercentage = conversionsLimit > 0 ? (conversionsUsed / conversionsLimit) * 100 : 0;
+  const usagePercentage = planName === 'unlimited' ? 
+    Math.min((conversionsUsed / 100) * 100, 100) : // Show progress based on first 100 conversions for unlimited
+    conversionsLimit > 0 ? (conversionsUsed / conversionsLimit) * 100 : 0;
 
   return (
     <Card className="w-full max-w-md">
@@ -103,13 +105,14 @@ export function SubscriptionPanel() {
         <div className="flex items-center justify-between">
           <CardTitle>Subscription Status</CardTitle>
           <Badge variant={subscribed ? "default" : "secondary"}>
-            {subscribed ? "Pro" : "Free"}
+            {planName === 'unlimited' ? 'Unlimited Plan' : 
+             planName === 'basic' ? 'Basic Plan' : 'Free Plan'}
           </Badge>
         </div>
         <CardDescription>
           {subscribed 
             ? `Active until ${subscriptionEnd ? new Date(subscriptionEnd).toLocaleDateString() : 'N/A'}`
-            : "Upgrade to Pro for unlimited conversions"
+            : "Choose a plan to start converting videos"
           }
         </CardDescription>
       </CardHeader>
@@ -117,7 +120,9 @@ export function SubscriptionPanel() {
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Conversions Used</span>
-            <span>{conversionsUsed} / {conversionsLimit || "0"}</span>
+            <span>
+              {conversionsUsed} / {planName === 'unlimited' ? '∞' : conversionsLimit || "0"}
+            </span>
           </div>
           <Progress value={usagePercentage} className="h-2" />
         </div>
@@ -188,7 +193,7 @@ export function SubscriptionPanel() {
 
         {subscribed && (
           <div className="text-sm text-green-600">
-            ✓ You have access to all Pro features
+            ✓ You have access to {planName === 'unlimited' ? 'unlimited conversions' : `${conversionsLimit} conversions per month`}
           </div>
         )}
 

@@ -65,16 +65,21 @@ serve(async (req) => {
       }
     }
 
-    // Determine conversion limits based on price ID
+    // Determine conversion limits and plan name based on price ID
     let conversionsLimit = 0; // Default for inactive subscriptions
+    let planName = 'free';
+    
     if (isActive && latestSub) {
       const priceId = latestSub.items.data[0]?.price?.id;
       if (priceId === "price_1S9KX4R0oSHMxg8M9LsdsJTo") { // Unlimited plan
         conversionsLimit = 999999; // Very high number for "unlimited"
+        planName = 'unlimited';
       } else if (priceId === "price_1S9KWrR0oSHMxg8M2vB4CWVL") { // Basic plan ($5)
         conversionsLimit = 100;
+        planName = 'basic';
       } else {
         conversionsLimit = 100; // Default to basic plan limits
+        planName = 'basic';
       }
     }
 
@@ -84,6 +89,7 @@ serve(async (req) => {
       stripe_customer_id: customerId,
       status: isActive ? status : 'inactive',
       plan_type: isActive ? 'pro' : 'free',
+      plan_name: planName,
       conversions_limit: conversionsLimit,
       current_period_start: isActive && latestSub?.current_period_start
         ? new Date(latestSub.current_period_start * 1000).toISOString()
@@ -117,7 +123,8 @@ serve(async (req) => {
       subscribed: hasActiveSub,
       conversions_limit: conversionsLimit,
       conversions_used: subscription?.conversions_used || 0,
-      subscription_end: subscriptionEnd
+      subscription_end: subscriptionEnd,
+      plan_name: planName
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

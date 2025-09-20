@@ -7,6 +7,7 @@ interface SubscriptionContextType {
   conversionsLimit: number;
   conversionsUsed: number;
   subscriptionEnd: string | null;
+  planName: string;
   loading: boolean;
   refreshSubscription: () => Promise<void>;
   canConvert: boolean;
@@ -19,6 +20,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [conversionsLimit, setConversionsLimit] = useState(0);
   const [conversionsUsed, setConversionsUsed] = useState(0);
   const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
+  const [planName, setPlanName] = useState('free');
   const [loading, setLoading] = useState(true);
   const { user, session } = useAuth();
 
@@ -42,6 +44,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       setConversionsLimit(data.conversions_limit || 0);
       setConversionsUsed(data.conversions_used || 0);
       setSubscriptionEnd(data.subscription_end || null);
+      setPlanName(data.plan_name || 'free');
     } catch (error) {
       console.error('Error checking subscription:', error);
     } finally {
@@ -66,6 +69,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     conversionsLimit,
     conversionsUsed,
     subscriptionEnd,
+    planName,
     loading,
     refreshSubscription,
     canConvert,
