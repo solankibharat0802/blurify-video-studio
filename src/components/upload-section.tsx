@@ -4,6 +4,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getBackendUrl } from "@/lib/config";
 
 // --- Type Definitions ---
 interface BlurMask {
@@ -221,36 +222,24 @@ export function UploadSection() {
     });
   };
 
-  const uploadToSupabase = async (file: File): Promise<string> => {
-    if (!user) throw new Error('User not authenticated');
+  const uploadToBackend = async (file: File, fileId: string): Promise<string> => {
+    const formData = new FormData();
+    formData.append('video', file);
+    formData.append('videoId', fileId);
     
-    const fileId = crypto.randomUUID();
-    const fileName = `${fileId}-${file.name}`;
-    
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from('original-videos')
-      .upload(fileName, file);
-    
-    if (uploadError) throw uploadError;
-    
-    // Create database record
-    const { data, error: dbError } = await supabase
-      .from('uploadvideo')
-      .insert({
-        id: fileId,
-        user_id: user.id,
-        original_filename: file.name,
-        original_file_path: fileName,
-        file_size: file.size,
-        status: 'uploaded'
-      })
-      .select()
-      .single();
-    
-    if (dbError) throw dbError;
-    
-    return fileId;
+    const response = await fetch(`${getBackendUrl()}/upload-video`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed with status: ${response.status}`);
+    }
+    const result = await response.json();
+    if (!result.success || !result.videoId) {
+      throw new Error('Backend did not confirm upload success.');
+    }
+    return result.videoId;
   };
   
   const handleFiles = useCallback(async (droppedFiles: File[]) => {
@@ -276,7 +265,7 @@ export function UploadSection() {
       try {
         const [preview, videoId] = await Promise.all([
           createVideoPreview(file),
-          uploadToSupabase(file)
+          uploadToBackend(file, fileId)
         ]);
         return { id: fileId, file, preview, status: 'pending' as const, videoId };
       } catch (error) {
@@ -324,18 +313,19 @@ export function UploadSection() {
         })
         .eq('user_id', user.id);
 
-      // Process video using Supabase Edge Function
-      const { data, error } = await supabase.functions.invoke('process-video', {
-        body: { videoId: editingFile.videoId, blurMasks: masks },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
+      // Process video directly with backend server
+      const response = await fetch(`${getBackendUrl()}/process-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: editingFile.videoId, blurMasks: masks }),
       });
+      
+      if (!response.ok) throw new Error(`Processing failed with status: ${response.status}`);
 
-      if (error) throw error;
-      if (!data.success) throw new Error(data.message || "Processing failed");
+      const result = await response.json();
+      if (!result.success) throw new Error(result.message || "Backend returned an error.");
 
-      setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: data.downloadUrl } : f));
+      setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
       toast.success(`Processing complete for ${editingFile.file.name}!`);
       
       // Refresh subscription data to update UI
@@ -350,26 +340,13 @@ export function UploadSection() {
     }
   };
 
-  const handleDownload = async (downloadUrl: string, fileName: string) => {
-    try {
-      const { data } = await supabase.storage
-        .from('edited-videos')
-        .download(downloadUrl);
-      
-      if (data) {
-        const url = URL.createObjectURL(data);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `processed_${fileName}`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }
-    } catch (error) {
-      console.error('Download error:', error);
-      toast.error('Failed to download video');
-    }
+  const handleDownload = (downloadUrl: string, fileName: string) => {
+    const link = document.createElement('a');
+    link.href = `${getBackendUrl()}${downloadUrl}`;
+    link.setAttribute('download', `processed_${fileName}`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const formatFileSize = (bytes: number) => {
