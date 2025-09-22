@@ -369,8 +369,16 @@ export function UploadSection() {
             throw new Error(errorData.message || "Backend returned an unreadable error.");
         }
         return response.json();
-      }).then(result => {
+      }).then(async result => {
         if (!result.success) throw new Error(result.message || "Backend returned a processing error.");
+        
+        // Record the conversion in Supabase
+        await supabase.functions.invoke('record-conversion', {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+        
         setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
         toast.success(`Processing complete for ${editingFile.file.name}!`);
       });
