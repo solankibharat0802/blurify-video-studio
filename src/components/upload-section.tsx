@@ -30,7 +30,10 @@ interface UploadedFile {
   errorMessage?: string;
 }
 
-// --- VideoEditModal Component ---
+
+
+
+// --- Video Edit Modal Component ---
 interface VideoEditModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -56,13 +59,21 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
     if (isOpen && file) {
       const url = URL.createObjectURL(file);
       if (videoRef.current) videoRef.current.src = url;
-      setIsPlaying(false); setCurrentTime(0); setDuration(0);
-      setBlurMasks([]); setSelectedMaskId(null);
+      // Reset state for new video
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setBlurMasks([]);
+      setSelectedMaskId(null);
       return () => URL.revokeObjectURL(url);
     }
   }, [isOpen, file]);
 
-  const togglePlayPause = () => { if (videoRef.current) isPlaying ? videoRef.current.pause() : videoRef.current.play(); };
+  const togglePlayPause = () => {
+    if (videoRef.current) {
+      isPlaying ? videoRef.current.pause() : videoRef.current.play();
+    }
+  };
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
     if (videoRef.current) videoRef.current.currentTime = time;
@@ -76,22 +87,32 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDrawing(true); const pos = getMousePos(e);
-    setStartPos(pos); setCurrentPos(pos);
+    setIsDrawing(true);
+    const pos = getMousePos(e);
+    setStartPos(pos);
+    setCurrentPos(pos);
   };
-  const handleMouseMove = (e: React.MouseEvent) => { if (isDrawing) setCurrentPos(getMousePos(e)); };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDrawing) {
+      setCurrentPos(getMousePos(e));
+    }
+  };
   const handleMouseUp = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
     const width = Math.abs(currentPos.x - startPos.x);
     const height = Math.abs(currentPos.y - startPos.y);
-    if (width < 10 || height < 10) return;
+    if (width < 10 || height < 10) return; // Ignore tiny accidental drags
+
     const newMask: BlurMask = {
       id: crypto.randomUUID(),
       x: Math.min(startPos.x, currentPos.x),
       y: Math.min(startPos.y, currentPos.y),
-      width, height, startTime: currentTime,
-      endTime: Math.min(currentTime + 5, duration), intensity: 10,
+      width,
+      height,
+      startTime: currentTime,
+      endTime: Math.min(currentTime + 5, duration),
+      intensity: 10,
     };
     setBlurMasks(masks => [...masks, newMask]);
     setSelectedMaskId(newMask.id);
@@ -107,14 +128,52 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
       setTimeout(() => setSaveError(false), 500);
       return;
     }
+  
     const video = videoRef.current;
     const container = containerRef.current;
-    if (!video || !container || !video.videoWidth) return;
-    const videoRect = video.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const scale = videoRect.width / video.videoWidth;
-    const offsetX = videoRect.left - containerRect.left;
-    const offsetY = videoRect.top - containerRect.top;
+    if (!video || !container || !video.videoWidth) {
+      console.error("Video or container ref not available.");
+      toast.error("Could not save, video data not ready.");
+      return;
+    }
+
+    // --- FIX: Replaced getBoundingClientRect with a more robust calculation ---
+    // This logic correctly handles the 'object-contain' scaling and positioning.
+    
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    const nativeVideoWidth = video.videoWidth;
+    const nativeVideoHeight = video.videoHeight;
+
+    const containerRatio = containerWidth / containerHeight;
+    const videoRatio = nativeVideoWidth / nativeVideoHeight;
+
+    let renderedWidth = containerWidth;
+    let renderedHeight = containerHeight;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // Determines the actual rendered size and offsets (black bars) of the video
+    if (videoRatio > containerRatio) {
+      // Video is wider than container, letterboxed (bars top/bottom)
+      renderedHeight = containerWidth / videoRatio;
+      offsetY = (containerHeight - renderedHeight) / 2;
+    } else if (videoRatio < containerRatio) {
+      // Video is taller than container, pillarboxed (bars left/right)
+      renderedWidth = containerHeight * videoRatio;
+      offsetX = (containerWidth - renderedWidth) / 2;
+    }
+
+    // Calculate the scaling factor based on the actual rendered dimension
+    const scale = renderedWidth / nativeVideoWidth;
+
+    if (scale === 0) {
+        toast.error("Failed to calculate video scale.");
+        return;
+    }
+
+    // Transform mask coordinates from the container's coordinate system
+    // to the native video's coordinate system.
     const transformedMasks = blurMasks.map(mask => ({
       ...mask,
       x: Math.round((mask.x - offsetX) / scale),
@@ -122,6 +181,7 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
       width: Math.round(mask.width / scale),
       height: Math.round(mask.height / scale),
     }));
+
     onSaveEdit(transformedMasks);
     onClose();
   };
@@ -141,6 +201,10 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
       <style>{`
         @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
         .shake-error { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #0ea5e9; cursor: pointer; margin-top: -6px; }
+        input[type=range]::-moz-range-thumb { height: 16px; width: 16px; border-radius: 50%; background: #0ea5e9; cursor: pointer; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 5px; }
       `}</style>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
         <div className="relative z-50 flex flex-col w-full max-w-6xl h-[90vh] gap-4 bg-slate-800 text-white border border-slate-700 shadow-lg rounded-lg p-6">
@@ -160,7 +224,7 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
               <div className="flex items-center gap-4">
                 <button onClick={togglePlayPause} className="p-2 border border-slate-600 rounded-md hover:bg-slate-700">{isPlaying ? <Pause size={16} /> : <Play size={16} />}</button>
                 <span className="text-sm text-slate-400 font-mono">{formatTime(currentTime)}</span>
-                <input type="range" min="0" max={duration || 0} value={currentTime} step="0.1" onChange={handleSeek} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer thumb:bg-sky-500" />
+                <input type="range" min="0" max={duration || 0} value={currentTime} step="0.1" onChange={handleSeek} className="w-full" />
                 <span className="text-sm text-slate-400 font-mono">{formatTime(duration)}</span>
               </div>
             </div>
@@ -179,7 +243,7 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
               {selectedMask && (
                 <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-4 flex-shrink-0">
                   <h4 className="font-semibold text-base">Edit Selected Mask</h4>
-                  <div className="space-y-1"><label className="text-sm font-medium text-slate-300">Intensity: {selectedMask.intensity}</label><input type="range" min="1" max="25" value={selectedMask.intensity} onChange={e => updateMask(selectedMask.id, { intensity: parseInt(e.target.value) })} className="w-full" /></div>
+                  <div className="space-y-1"><label className="text-sm font-medium text-slate-300">Intensity: {selectedMask.intensity}</label><input type="range" min="1" max="50" value={selectedMask.intensity} onChange={e => updateMask(selectedMask.id, { intensity: parseInt(e.target.value) })} className="w-full" /></div>
                   <div className="space-y-1"><label className="text-sm font-medium text-slate-300">Start Time: {formatTime(selectedMask.startTime)}</label><input type="range" min="0" max={duration} step="0.1" value={selectedMask.startTime} onChange={e => updateMask(selectedMask.id, { startTime: parseFloat(e.target.value) })} className="w-full" /></div>
                   <div className="space-y-1"><label className="text-sm font-medium text-slate-300">End Time: {formatTime(selectedMask.endTime)}</label><input type="range" min={selectedMask.startTime} max={duration} step="0.1" value={selectedMask.endTime} onChange={e => updateMask(selectedMask.id, { endTime: parseFloat(e.target.value) })} className="w-full" /></div>
                 </div>
@@ -249,14 +313,13 @@ export function UploadSection() {
       return;
     }
 
-    // Check subscription and conversion limits
     if (!subscribed) {
       toast.error('Please subscribe to upload and process videos');
       return;
     }
 
     if (!canConvert) {
-      toast.error(`You've used all ${conversionsLimit} conversions this month. Please wait for reset or upgrade.`);
+      toast.error(`You've used all ${conversionsLimit} conversions this month.`);
       return;
     }
 
@@ -296,39 +359,22 @@ export function UploadSection() {
     setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'processing', blurMasks: masks } : f));
     
     try {
-      // Log conversion usage when processing starts
-      await supabase
-        .from('conversion_logs')
-        .insert({
-          user_id: user.id,
-          video_id: editingFile.videoId,
-          status: 'processing'
-        });
-
-      // Update subscription usage
-      await supabase
-        .from('subscriptions')
-        .update({
-          conversions_used: conversionsUsed + 1
-        })
-        .eq('user_id', user.id);
-
-      // Process video directly with backend server
-      const response = await fetch(`${getBackendUrl()}/process-video`, {
+      await fetch(`${getBackendUrl()}/process-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoId: editingFile.videoId, blurMasks: masks }),
+      }).then(async (response) => {
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: `Processing failed with status: ${response.status}` }));
+            throw new Error(errorData.message || "Backend returned an unreadable error.");
+        }
+        return response.json();
+      }).then(result => {
+        if (!result.success) throw new Error(result.message || "Backend returned a processing error.");
+        setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
+        toast.success(`Processing complete for ${editingFile.file.name}!`);
       });
       
-      if (!response.ok) throw new Error(`Processing failed with status: ${response.status}`);
-
-      const result = await response.json();
-      if (!result.success) throw new Error(result.message || "Backend returned an error.");
-
-      setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
-      toast.success(`Processing complete for ${editingFile.file.name}!`);
-      
-      // Refresh subscription data to update UI
       await refreshSubscription();
     } catch (error) {
       console.error('Processing error:', error);
@@ -377,11 +423,11 @@ export function UploadSection() {
         .hidden { display: none; }
         .file-list { margin-top: 2rem; }
         .file-card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1rem; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-        .file-info { display: flex; align-items: center; gap: 1rem; }
-        .thumbnail { width: 5rem; height: 3rem; border-radius: 0.5rem; object-fit: cover; background-color: #334155; }
-        .thumbnail-placeholder { width: 5rem; height: 3rem; border-radius: 0.5rem; background-color: #334155; display: flex; align-items: center; justify-content: center; color: #64748b; }
-        .file-actions { display: flex; align-items: center; gap: 0.5rem; }
-        .button-style, .button-style-outline, .button-style-ghost { padding: 0.5rem 1rem; border-radius: 0.5rem; font-semibold; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; transition: all 0.2s; }
+        .file-info { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+        .thumbnail { width: 5rem; height: 3rem; border-radius: 0.5rem; object-fit: cover; background-color: #334155; flex-shrink: 0; }
+        .thumbnail-placeholder { width: 5rem; height: 3rem; border-radius: 0.5rem; background-color: #334155; display: flex; align-items: center; justify-content: center; color: #64748b; flex-shrink: 0; }
+        .file-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;}
+        .button-style, .button-style-outline, .button-style-ghost { padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .button-style { background-color: #0ea5e9; color: white; border: 1px solid #0ea5e9; }
         .button-style:hover { background-color: #0284c7; }
         .button-style-outline { background-color: transparent; color: #e2e8f0; border: 1px solid #475569; }
@@ -417,16 +463,6 @@ export function UploadSection() {
                 disabled={!subscribed || !canConvert}
               />
           </label>
-          {!subscribed && (
-            <p className="text-sm text-slate-400 mt-4">
-              Please subscribe to start uploading and processing videos
-            </p>
-          )}
-          {subscribed && !canConvert && (
-            <p className="text-sm text-slate-400 mt-4">
-              You've used all {conversionsLimit} conversions this month
-            </p>
-          )}
         </div>
         {files.length > 0 && (
           <div className="file-list">
@@ -448,7 +484,7 @@ export function UploadSection() {
                     </button>
                   )}
                   <button className="button-style-outline" onClick={() => setEditingFile(uploadedFile)} disabled={uploadedFile.status === 'processing'}>
-                    <Play size={16} /> Edit & Process
+                    <Play size={16} /> Edit
                   </button>
                   <button className="button-style-ghost" onClick={() => removeFile(uploadedFile.id)}>
                     <X size={16} />
@@ -463,3 +499,4 @@ export function UploadSection() {
     </>
   );
 }
+
