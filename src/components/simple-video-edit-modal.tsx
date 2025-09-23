@@ -47,7 +47,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
       height: 150,
       startTime: 0,
       endTime: 5,
-      intensity: 10,
+      intensity: 40,
     };
     setBlurMasks([...blurMasks, newMask]);
   };
