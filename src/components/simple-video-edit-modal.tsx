@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { getBackendUrl } from "@/lib/config";
 
@@ -36,6 +36,7 @@ interface VideoEditModalProps {
 export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalProps) => {
   const [blurMasks, setBlurMasks] = useState<BlurMask[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [videoSpeed, setVideoSpeed] = useState(1);
 
   const addBlurMask = () => {
     const newMask: BlurMask = {
@@ -57,6 +58,11 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
 
   const removeMask = (id: string) => {
     setBlurMasks(masks => masks.filter(m => m.id !== id));
+  };
+
+  const setSpeed = (speed: number) => {
+    setVideoSpeed(speed);
+    toast.success(`Video speed set to ${speed}x`);
   };
 
   const handleSave = async () => {
@@ -136,11 +142,49 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Blur Masks ({blurMasks.length})</h3>
-            <Button onClick={addBlurMask} variant="outline">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Blur Mask
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={addBlurMask} variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Blur Mask
+              </Button>
+            </div>
           </div>
+
+          {/* Video Speed Controls */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Video Speed Control
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2 items-center">
+                <span className="text-sm font-medium">Current Speed: {videoSpeed}x</span>
+                <Button 
+                  onClick={() => setSpeed(1)} 
+                  variant={videoSpeed === 1 ? "default" : "outline"}
+                  size="sm"
+                >
+                  1x
+                </Button>
+                <Button 
+                  onClick={() => setSpeed(2)} 
+                  variant={videoSpeed === 2 ? "default" : "outline"}
+                  size="sm"
+                >
+                  2x
+                </Button>
+                <Button 
+                  onClick={() => setSpeed(5)} 
+                  variant={videoSpeed === 5 ? "default" : "outline"}
+                  size="sm"
+                >
+                  5x
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           {blurMasks.length === 0 ? (
             <Card>
