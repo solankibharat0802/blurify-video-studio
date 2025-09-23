@@ -154,10 +154,13 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
           {/* Video Speed Controls */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-4 w-4" />
-                Video Speed Control
-              </CardTitle>
+               <CardTitle className="flex items-center gap-2">
+                 <Zap className="h-4 w-4" />
+                 Video Speed (Applied During Processing)
+               </CardTitle>
+               <CardDescription>
+                 Select the playback speed for the processed video
+               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex gap-2 items-center">
