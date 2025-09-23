@@ -373,17 +373,30 @@ export function UploadSection() {
         if (!result.success) throw new Error(result.message || "Backend returned a processing error.");
         
         // Record the conversion in Supabase
-        await supabase.functions.invoke('record-conversion', {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        });
+        try {
+          console.log('Recording conversion...');
+          const { data: conversionData, error: conversionError } = await supabase.functions.invoke('record-conversion', {
+            headers: {
+              Authorization: `Bearer ${session?.access_token}`,
+            },
+          });
+          
+          if (conversionError) {
+            console.error('Conversion recording error:', conversionError);
+          } else {
+            console.log('Conversion recorded successfully:', conversionData);
+          }
+        } catch (conversionRecordError) {
+          console.error('Failed to record conversion:', conversionRecordError);
+        }
         
         setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
         toast.success(`Processing complete for ${editingFile.file.name}!`);
+        
+        // Refresh subscription to update the conversion count
+        await refreshSubscription();
       });
       
-      await refreshSubscription();
     } catch (error) {
       console.error('Processing error:', error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
