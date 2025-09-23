@@ -393,8 +393,8 @@ export function UploadSection() {
         setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
         toast.success(`Processing complete for ${editingFile.file.name}!`);
         
-        // Refresh subscription to update the conversion count
-        await refreshSubscription();
+        // Only refresh subscription to update count, don't close the modal
+        refreshSubscription().catch(console.error);
       });
       
     } catch (error) {
@@ -402,9 +402,8 @@ export function UploadSection() {
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'error', errorMessage } : f));
       toast.error(`Processing failed for ${editingFile.file.name}`);
-    } finally {
-      setEditingFile(null);
     }
+    // Don't automatically close the modal - let user close it manually
   };
 
   const handleDownload = (downloadUrl: string, fileName: string) => {
