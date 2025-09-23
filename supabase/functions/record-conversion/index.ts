@@ -29,44 +29,29 @@ serve(async (req) => {
 
     console.log(`Recording conversion for user: ${user.id}`);
 
+    // Get current subscription data
+    const { data: currentSub, error: fetchError } = await supabaseClient
+      .from('subscriptions')
+      .select('conversions_used, conversions_limit')
+      .eq('user_id', user.id)
+      .single();
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch subscription: ${fetchError.message}`);
+    }
+
     // Increment the conversion count
+    const newCount = (currentSub?.conversions_used || 0) + 1;
+    
     const { data: subscription, error: updateError } = await supabaseClient
       .from('subscriptions')
-      .update({ 
-        conversions_used: supabaseClient.rpc('increment_conversions_used', { user_uuid: user.id })
-      })
+      .update({ conversions_used: newCount })
       .eq('user_id', user.id)
       .select('conversions_used, conversions_limit')
       .single();
 
     if (updateError) {
-      console.error('Error updating conversion count:', updateError);
-      
-      // Fallback: manual increment
-      const { data: currentSub } = await supabaseClient
-        .from('subscriptions')
-        .select('conversions_used')
-        .eq('user_id', user.id)
-        .single();
-
-      const newCount = (currentSub?.conversions_used || 0) + 1;
-      
-      const { error: fallbackError } = await supabaseClient
-        .from('subscriptions')
-        .update({ conversions_used: newCount })
-        .eq('user_id', user.id);
-
-      if (fallbackError) {
-        throw new Error(`Failed to update conversion count: ${fallbackError.message}`);
-      }
-
-      return new Response(JSON.stringify({
-        success: true,
-        conversions_used: newCount
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
+      throw new Error(`Failed to update conversion count: ${updateError.message}`);
     }
 
     console.log(`Conversion recorded. New count: ${subscription.conversions_used}`);
