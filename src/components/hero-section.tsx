@@ -34,7 +34,7 @@ export const HeroSection = () => {
           {/* Subtitle */}
           <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
             Intelligently blur sensitive content in your videos with precision timing controls. 
-            Upload, edit, and download professional-quality results in minutes.
+            Upload, edit, and download professional-quality results in minutes Hello.
           </p>
 
           {/* CTA Buttons */}
