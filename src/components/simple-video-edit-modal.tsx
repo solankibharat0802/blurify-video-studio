@@ -79,7 +79,8 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           videoId: file.videoId, 
-          blurMasks: blurMasks 
+          blurMasks: blurMasks,
+          videoSpeed: videoSpeed
         }),
       });
       
