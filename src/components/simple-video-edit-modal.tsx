@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
   const [blurMasks, setBlurMasks] = useState<BlurMask[]>([]);
   const [processing, setProcessing] = useState(false);
   const [videoSpeed, setVideoSpeed] = useState(1);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const addBlurMask = () => {
     const newMask: BlurMask = {
@@ -62,7 +63,10 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
 
   const setSpeed = (speed: number) => {
     setVideoSpeed(speed);
-    toast.success(`Video speed set to ${speed}x`);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
+    toast.success(`Video playback speed set to ${speed}x`);
   };
 
   const handleSave = async () => {
@@ -79,8 +83,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           videoId: file.videoId, 
-          blurMasks: blurMasks,
-          videoSpeed: videoSpeed
+          blurMasks: blurMasks
         }),
       });
       
@@ -141,6 +144,28 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         </DialogHeader>
         
         <div className="space-y-6">
+          {/* Video Preview */}
+          {file && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Video Preview</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <video
+                  ref={videoRef}
+                  src={`${getBackendUrl()}/video/${file.videoId}`}
+                  controls
+                  className="w-full max-h-64 rounded-lg"
+                  onLoadedMetadata={() => {
+                    if (videoRef.current) {
+                      videoRef.current.playbackRate = videoSpeed;
+                    }
+                  }}
+                />
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Blur Masks ({blurMasks.length})</h3>
             <div className="flex gap-2">
@@ -156,10 +181,10 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
             <CardHeader>
                <CardTitle className="flex items-center gap-2">
                  <Zap className="h-4 w-4" />
-                 Video Speed (Applied During Processing)
+                 Video Playback Speed (Preview Only)
                </CardTitle>
                <CardDescription>
-                 Select the playback speed for the processed video
+                 Control playback speed for preview - does not affect processed video
                </CardDescription>
             </CardHeader>
             <CardContent>
