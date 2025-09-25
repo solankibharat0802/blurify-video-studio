@@ -51,6 +51,7 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
   const [saveError, setSaveError] = useState(false);
+  const [videoSpeed, setVideoSpeed] = useState(1);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,6 +79,13 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
     const time = parseFloat(e.target.value);
     if (videoRef.current) videoRef.current.currentTime = time;
     setCurrentTime(time);
+  };
+
+  const setSpeed = (speed: number) => {
+    setVideoSpeed(speed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+    }
   };
 
   const getMousePos = (e: React.MouseEvent) => {
@@ -226,6 +234,27 @@ const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditModalPro
                 <span className="text-sm text-slate-400 font-mono">{formatTime(currentTime)}</span>
                 <input type="range" min="0" max={duration || 0} value={currentTime} step="0.1" onChange={handleSeek} className="w-full" />
                 <span className="text-sm text-slate-400 font-mono">{formatTime(duration)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400">Speed: {videoSpeed}x</span>
+                <button 
+                  onClick={() => setSpeed(2)} 
+                  className={`px-2 py-1 text-sm rounded border ${videoSpeed === 2 ? 'bg-sky-600 border-sky-600' : 'border-slate-600 hover:bg-slate-700'}`}
+                >
+                  2x
+                </button>
+                <button 
+                  onClick={() => setSpeed(5)} 
+                  className={`px-2 py-1 text-sm rounded border ${videoSpeed === 5 ? 'bg-sky-600 border-sky-600' : 'border-slate-600 hover:bg-slate-700'}`}
+                >
+                  5x
+                </button>
+                <button 
+                  onClick={() => setSpeed(10)} 
+                  className={`px-2 py-1 text-sm rounded border ${videoSpeed === 10 ? 'bg-sky-600 border-sky-600' : 'border-slate-600 hover:bg-slate-700'}`}
+                >
+                  10x
+                </button>
               </div>
             </div>
             <div className="w-80 flex-shrink-0 flex flex-col gap-4">
