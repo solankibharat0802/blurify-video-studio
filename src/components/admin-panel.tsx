@@ -123,6 +123,8 @@ export function AdminPanel() {
 
   const toggleSubscription = async (userId: string, currentStatus: boolean) => {
     try {
+      console.log(`Toggling subscription for user ${userId}, current status: ${currentStatus}`);
+      
       const updates: any = { subscription_active: !currentStatus };
       
       if (!currentStatus) {
@@ -133,10 +135,14 @@ export function AdminPanel() {
         
         updates.subscription_start_date = startDate.toISOString();
         updates.subscription_end_date = endDate.toISOString();
+        
+        console.log('Activating subscription with dates:', updates);
       } else {
         // Deactivating subscription - clear dates
         updates.subscription_start_date = null;
         updates.subscription_end_date = null;
+        
+        console.log('Deactivating subscription, clearing dates');
       }
 
       const { error } = await supabase
@@ -144,8 +150,12 @@ export function AdminPanel() {
         .update(updates)
         .eq('user_id', userId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
       
+      console.log('Subscription toggle successful');
       toast.success(`Subscription ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
       await fetchUsers(); // Refresh the data
     } catch (error) {
@@ -156,16 +166,23 @@ export function AdminPanel() {
 
   const updateSubscriptionDate = async (userId: string, endDate: string) => {
     try {
+      console.log(`Updating subscription date for user ${userId} to ${endDate}`);
+      
       const { error } = await supabase
         .from('profiles')
         .update({ 
           subscription_end_date: endDate,
-          subscription_active: true 
+          subscription_active: true,
+          subscription_start_date: new Date().toISOString() // Set start date to now when activating
         })
         .eq('user_id', userId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
       
+      console.log('Subscription date update successful');
       toast.success('Subscription date updated successfully');
       await fetchUsers(); // Refresh the data
     } catch (error) {
@@ -294,32 +311,58 @@ export function AdminPanel() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {user.subscription_active && user.subscription_end_date ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="datetime-local"
-                                value={new Date(user.subscription_end_date).toISOString().slice(0, 16)}
-                                onChange={(e) => updateSubscriptionDate(user.id, new Date(e.target.value).toISOString())}
-                                className="text-sm border rounded px-2 py-1 w-44"
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          <div className="flex flex-col gap-2">
+                            {user.subscription_active && user.subscription_end_date ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="datetime-local"
+                                  value={new Date(user.subscription_end_date).toISOString().slice(0, 16)}
+                                  onChange={(e) => updateSubscriptionDate(user.id, new Date(e.target.value).toISOString())}
+                                  className="text-sm border rounded px-2 py-1 w-44 bg-background"
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="datetime-local"
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      updateSubscriptionDate(user.id, new Date(e.target.value).toISOString());
+                                    }
+                                  }}
+                                  className="text-sm border rounded px-2 py-1 w-44 bg-background"
+                                  placeholder="Set end date"
+                                />
+                                <span className="text-xs text-gray-500">Set date to activate</span>
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const endDate = new Date();
-                              endDate.setMonth(endDate.getMonth() + 1);
-                              updateSubscriptionDate(user.id, endDate.toISOString());
-                            }}
-                            disabled={user.subscription_active}
-                          >
-                            +1 Month
-                          </Button>
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const endDate = new Date();
+                                endDate.setMonth(endDate.getMonth() + 1);
+                                updateSubscriptionDate(user.id, endDate.toISOString());
+                              }}
+                            >
+                              +1 Month
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const endDate = new Date();
+                                endDate.setFullYear(endDate.getFullYear() + 1);
+                                updateSubscriptionDate(user.id, endDate.toISOString());
+                              }}
+                            >
+                              +1 Year
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="text-sm">
