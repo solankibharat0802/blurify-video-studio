@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +17,11 @@ interface UserData {
   is_admin: boolean;
   conversion_count: number;
   created_at: string;
+  conversion_limit: number;
+  conversions_used: number;
+  subscription_active: boolean;
+  subscription_start_date: string | null;
+  subscription_end_date: string | null;
 }
 
 export function AdminPanel() {
@@ -53,6 +59,12 @@ export function AdminPanel() {
 
   const fetchUsers = async () => {
     try {
+      // Update expired subscriptions first
+      const { error: updateError } = await supabase.rpc('update_expired_subscriptions');
+      if (updateError) {
+        console.error('Error updating expired subscriptions:', updateError);
+      }
+
       const { data: usersData, error } = await supabase
         .from('profiles')
         .select(`
@@ -61,7 +73,12 @@ export function AdminPanel() {
           email,
           full_name,
           is_admin,
-          created_at
+          created_at,
+          conversion_limit,
+          conversions_used,
+          subscription_active,
+          subscription_start_date,
+          subscription_end_date
         `);
 
       if (error) throw error;
@@ -87,6 +104,11 @@ export function AdminPanel() {
           is_admin: user.is_admin,
           conversion_count: conversionCountsMap[user.user_id] || 0,
           created_at: user.created_at,
+          conversion_limit: user.conversion_limit || 5,
+          conversions_used: user.conversions_used || 0,
+          subscription_active: user.subscription_active || false,
+          subscription_start_date: user.subscription_start_date,
+          subscription_end_date: user.subscription_end_date,
         };
       }) || [];
 
@@ -96,6 +118,59 @@ export function AdminPanel() {
       toast.error('Failed to fetch users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleSubscription = async (userId: string, currentStatus: boolean) => {
+    try {
+      const updates: any = { subscription_active: !currentStatus };
+      
+      if (!currentStatus) {
+        // Activating subscription - set start and end dates
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+        
+        updates.subscription_start_date = startDate.toISOString();
+        updates.subscription_end_date = endDate.toISOString();
+      } else {
+        // Deactivating subscription - clear dates
+        updates.subscription_start_date = null;
+        updates.subscription_end_date = null;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      
+      toast.success(`Subscription ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
+      await fetchUsers(); // Refresh the data
+    } catch (error) {
+      console.error('Error toggling subscription:', error);
+      toast.error('Failed to update subscription');
+    }
+  };
+
+  const updateSubscriptionDate = async (userId: string, endDate: string) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          subscription_end_date: endDate,
+          subscription_active: true 
+        })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      
+      toast.success('Subscription date updated successfully');
+      await fetchUsers(); // Refresh the data
+    } catch (error) {
+      console.error('Error updating subscription date:', error);
+      toast.error('Failed to update subscription date');
     }
   };
 
@@ -125,10 +200,14 @@ export function AdminPanel() {
     );
   }
 
+  const activeSubscriptions = users.filter(u => u.subscription_active).length;
+  const freeUsers = users.filter(u => !u.subscription_active).length;
+  const totalConversions = users.reduce((sum, u) => sum + u.conversion_count, 0);
+
   return (
     <div className="w-full">
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -143,18 +222,34 @@ export function AdminPanel() {
                 <CardTitle className="text-sm font-medium">Total Conversions</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {users.reduce((sum, u) => sum + u.conversion_count, 0)}
-                </div>
+                <div className="text-2xl font-bold">{totalConversions}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Active Subscriptions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{activeSubscriptions}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Free Users</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">{freeUsers}</div>
               </CardContent>
             </Card>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Users & Activity</CardTitle>
+              <CardTitle>User Management</CardTitle>
               <CardDescription>
-                Overview of users and their conversion activity
+                Manage user subscriptions and conversion limits
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -163,7 +258,10 @@ export function AdminPanel() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>User</TableHead>
-                      <TableHead>Total Conversions</TableHead>
+                      <TableHead>Conversions</TableHead>
+                      <TableHead>Subscription</TableHead>
+                      <TableHead>End Date</TableHead>
+                      <TableHead>Actions</TableHead>
                       <TableHead>Joined</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -179,8 +277,49 @@ export function AdminPanel() {
                         </TableCell>
                         <TableCell>
                           <div className="text-sm">
-                            {user.conversion_count} videos processed
+                            <span className={user.conversions_used >= user.conversion_limit && !user.subscription_active ? 'text-red-600 font-semibold' : ''}>
+                              {user.conversions_used}/{user.subscription_active ? '∞' : user.conversion_limit}
+                            </span>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={user.subscription_active}
+                              onCheckedChange={() => toggleSubscription(user.id, user.subscription_active)}
+                            />
+                            <span className={user.subscription_active ? 'text-green-600 font-semibold' : 'text-gray-500'}>
+                              {user.subscription_active ? 'Active' : 'Free'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {user.subscription_active && user.subscription_end_date ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="datetime-local"
+                                value={new Date(user.subscription_end_date).toISOString().slice(0, 16)}
+                                onChange={(e) => updateSubscriptionDate(user.id, new Date(e.target.value).toISOString())}
+                                className="text-sm border rounded px-2 py-1 w-44"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const endDate = new Date();
+                              endDate.setMonth(endDate.getMonth() + 1);
+                              updateSubscriptionDate(user.id, endDate.toISOString());
+                            }}
+                            disabled={user.subscription_active}
+                          >
+                            +1 Month
+                          </Button>
                         </TableCell>
                         <TableCell>
                           <div className="text-sm">

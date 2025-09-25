@@ -294,8 +294,36 @@ export function UploadSection() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [editingFile, setEditingFile] = useState<UploadedFile | null>(null);
+  const [userLimits, setUserLimits] = useState<{
+    conversions_used: number;
+    conversion_limit: number;
+    subscription_active: boolean;
+  } | null>(null);
   
   const { user, session } = useAuth();
+
+  const fetchUserLimits = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('conversions_used, conversion_limit, subscription_active')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (error) throw error;
+      setUserLimits(data);
+    } catch (error) {
+      console.error('Error fetching user limits:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchUserLimits();
+    }
+  }, [user]);
 
   const createVideoPreview = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -412,6 +440,7 @@ export function UploadSection() {
         
         setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
         toast.success(`Processing complete for ${editingFile.file.name}!`);
+        await fetchUserLimits(); // Refresh limits after successful processing
         
       });
       
@@ -478,6 +507,24 @@ export function UploadSection() {
         <div className="text-center mb-8">
           <h2 className="text-4xl font-bold">Upload Your Videos</h2>
           <p className="text-slate-400 mt-2">Drag and drop or click to select files</p>
+          {userLimits && (
+            <div className="max-w-md mx-auto mt-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+              <p className="text-sm text-slate-300">
+                {userLimits.subscription_active ? (
+                  <span className="text-green-400 font-semibold">✓ Unlimited conversions (Premium)</span>
+                ) : (
+                  <span className={userLimits.conversions_used >= userLimits.conversion_limit ? 'text-red-400 font-semibold' : 'text-blue-400'}>
+                    Conversions: {userLimits.conversions_used}/{userLimits.conversion_limit} (Free)
+                  </span>
+                )}
+              </p>
+              {!userLimits.subscription_active && userLimits.conversions_used >= userLimits.conversion_limit && (
+                <p className="text-xs text-red-300 mt-1">
+                  Limit reached. Contact admin for subscription.
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <div className={`upload-zone ${isDragging ? 'dragging' : ''}`} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
           <UploadCloud className="icon" />

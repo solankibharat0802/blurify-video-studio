@@ -144,6 +144,27 @@ serve(async (req) => {
       )
     }
 
+    // Check if user can convert (has remaining conversions or active subscription)
+    const { data: canConvert, error: convertError } = await supabase
+      .rpc('can_user_convert', { user_uuid: video.user_id });
+
+    if (convertError) {
+      console.error('Error checking conversion eligibility:', convertError);
+      return new Response(JSON.stringify({ error: 'Failed to check conversion eligibility' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!canConvert) {
+      return new Response(JSON.stringify({ 
+        error: 'Conversion limit reached. Please upgrade to continue processing videos.' 
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Download original video from storage
     const { data: videoFile, error: downloadError } = await supabase.storage
       .from('original-videos')
@@ -194,6 +215,14 @@ serve(async (req) => {
         JSON.stringify({ error: 'Failed to upload processed video' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // Increment user's conversion count
+    const { error: incrementError } = await supabase
+      .rpc('increment_user_conversions', { user_uuid: video.user_id });
+
+    if (incrementError) {
+      console.error('Error incrementing conversion count:', incrementError);
     }
 
     // Update database with completion status

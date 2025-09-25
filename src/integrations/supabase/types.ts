@@ -54,29 +54,44 @@ export type Database = {
       }
       profiles: {
         Row: {
+          conversion_limit: number | null
+          conversions_used: number | null
           created_at: string
           email: string
           full_name: string | null
           id: string
           is_admin: boolean
+          subscription_active: boolean | null
+          subscription_end_date: string | null
+          subscription_start_date: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          conversion_limit?: number | null
+          conversions_used?: number | null
           created_at?: string
           email: string
           full_name?: string | null
           id?: string
           is_admin?: boolean
+          subscription_active?: boolean | null
+          subscription_end_date?: string | null
+          subscription_start_date?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          conversion_limit?: number | null
+          conversions_used?: number | null
           created_at?: string
           email?: string
           full_name?: string | null
           id?: string
           is_admin?: boolean
+          subscription_active?: boolean | null
+          subscription_end_date?: string | null
+          subscription_start_date?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -135,9 +150,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_user_convert: {
+        Args: { user_uuid: string }
+        Returns: boolean
+      }
+      increment_user_conversions: {
+        Args: { user_uuid: string }
+        Returns: undefined
+      }
       is_admin: {
         Args: { user_uuid: string }
         Returns: boolean
+      }
+      update_expired_subscriptions: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
     }
     Enums: {
