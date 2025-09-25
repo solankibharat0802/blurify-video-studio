@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,8 @@ export function AdminPanel() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [editingUsers, setEditingUsers] = useState<Record<string, Partial<UserData>>>({});
+  const [updatingUsers, setUpdatingUsers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     checkAdminStatus();
@@ -121,9 +124,113 @@ export function AdminPanel() {
     }
   };
 
-  const toggleSubscription = async (userId: string, currentStatus: boolean) => {
+  const startEditingUser = (userId: string, userData: UserData) => {
+    setEditingUsers(prev => ({
+      ...prev,
+      [userId]: {
+        subscription_active: userData.subscription_active,
+        subscription_end_date: userData.subscription_end_date,
+        conversion_limit: userData.conversion_limit
+      }
+    }));
+  };
+
+  const updateEditingUser = (userId: string, field: keyof UserData, value: any) => {
+    setEditingUsers(prev => ({
+      ...prev,
+      [userId]: {
+        ...prev[userId],
+        [field]: value
+      }
+    }));
+  };
+
+  const cancelEditingUser = (userId: string) => {
+    setEditingUsers(prev => {
+      const newState = { ...prev };
+      delete newState[userId];
+      return newState;
+    });
+  };
+
+  const saveUserChanges = async (userId: string, userData: UserData) => {
+    const changes = editingUsers[userId];
+    if (!changes) return;
+
+    setUpdatingUsers(prev => new Set([...prev, userId]));
+
     try {
-      console.log(`Toggling subscription for user ${userId}, current status: ${currentStatus}`);
+      console.log(`Saving changes for user ${userId}:`, changes);
+      
+      const updates: any = {};
+      
+      // Handle subscription changes
+      if (changes.subscription_active !== undefined) {
+        updates.subscription_active = changes.subscription_active;
+        
+        if (changes.subscription_active) {
+          // Activating subscription
+          updates.subscription_start_date = new Date().toISOString();
+          if (changes.subscription_end_date) {
+            updates.subscription_end_date = changes.subscription_end_date;
+          } else {
+            // Default to 1 month if no end date specified
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + 1);
+            updates.subscription_end_date = endDate.toISOString();
+          }
+        } else {
+          // Deactivating subscription
+          updates.subscription_start_date = null;
+          updates.subscription_end_date = null;
+        }
+      } else if (changes.subscription_end_date) {
+        // Just updating end date
+        updates.subscription_end_date = changes.subscription_end_date;
+        updates.subscription_active = true;
+        if (!userData.subscription_start_date) {
+          updates.subscription_start_date = new Date().toISOString();
+        }
+      }
+
+      // Handle conversion limit changes
+      if (changes.conversion_limit !== undefined) {
+        updates.conversion_limit = changes.conversion_limit;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+      
+      console.log('User update successful');
+      toast.success(`User ${userData.email} updated successfully`);
+      
+      // Clear editing state for this user
+      cancelEditingUser(userId);
+      
+      // Refresh the data
+      await fetchUsers();
+    } catch (error) {
+      console.error('Error updating user:', error);
+      toast.error('Failed to update user');
+    } finally {
+      setUpdatingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    }
+  };
+
+  const quickToggleSubscription = async (userId: string, currentStatus: boolean) => {
+    try {
+      console.log(`Quick toggling subscription for user ${userId}, current status: ${currentStatus}`);
       
       const updates: any = { subscription_active: !currentStatus };
       
@@ -164,9 +271,9 @@ export function AdminPanel() {
     }
   };
 
-  const updateSubscriptionDate = async (userId: string, endDate: string) => {
+  const quickUpdateDate = async (userId: string, endDate: string) => {
     try {
-      console.log(`Updating subscription date for user ${userId} to ${endDate}`);
+      console.log(`Quick updating subscription date for user ${userId} to ${endDate}`);
       
       const { error } = await supabase
         .from('profiles')
@@ -276,101 +383,181 @@ export function AdminPanel() {
                     <TableRow>
                       <TableHead>User</TableHead>
                       <TableHead>Conversions</TableHead>
+                      <TableHead>Conversion Limit</TableHead>
                       <TableHead>Subscription</TableHead>
                       <TableHead>End Date</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead>Quick Actions</TableHead>
+                      <TableHead>Update</TableHead>
                       <TableHead>Joined</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{user.full_name}</div>
-                            <div className="text-sm text-muted-foreground">{user.email}</div>
-                            {user.is_admin && <Badge variant="outline" className="text-xs">Admin</Badge>}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <span className={user.conversions_used >= user.conversion_limit && !user.subscription_active ? 'text-red-600 font-semibold' : ''}>
-                              {user.conversions_used}/{user.subscription_active ? '∞' : user.conversion_limit}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              checked={user.subscription_active}
-                              onCheckedChange={() => toggleSubscription(user.id, user.subscription_active)}
-                            />
-                            <span className={user.subscription_active ? 'text-green-600 font-semibold' : 'text-gray-500'}>
-                              {user.subscription_active ? 'Active' : 'Free'}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-2">
-                            {user.subscription_active && user.subscription_end_date ? (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="datetime-local"
-                                  value={new Date(user.subscription_end_date).toISOString().slice(0, 16)}
-                                  onChange={(e) => updateSubscriptionDate(user.id, new Date(e.target.value).toISOString())}
-                                  className="text-sm border rounded px-2 py-1 w-44 bg-background"
-                                />
-                              </div>
+                    {users.map((userData) => {
+                      const isEditing = editingUsers[userData.id];
+                      const isUpdating = updatingUsers.has(userData.id);
+                      const hasChanges = Boolean(isEditing);
+
+                      return (
+                        <TableRow key={userData.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{userData.full_name}</div>
+                              <div className="text-sm text-muted-foreground">{userData.email}</div>
+                              {userData.is_admin && <Badge variant="outline" className="text-xs">Admin</Badge>}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <span className={userData.conversions_used >= userData.conversion_limit && !userData.subscription_active ? 'text-red-600 font-semibold' : ''}>
+                                {userData.conversions_used}/{userData.subscription_active ? '∞' : userData.conversion_limit}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {isEditing ? (
+                              <input
+                                type="number"
+                                value={isEditing.conversion_limit ?? userData.conversion_limit}
+                                onChange={(e) => updateEditingUser(userData.id, 'conversion_limit', parseInt(e.target.value))}
+                                className="w-20 text-sm border rounded px-2 py-1 bg-background"
+                                min="1"
+                                max="100"
+                              />
                             ) : (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="datetime-local"
-                                  onChange={(e) => {
-                                    if (e.target.value) {
-                                      updateSubscriptionDate(user.id, new Date(e.target.value).toISOString());
-                                    }
-                                  }}
-                                  className="text-sm border rounded px-2 py-1 w-44 bg-background"
-                                  placeholder="Set end date"
-                                />
-                                <span className="text-xs text-gray-500">Set date to activate</span>
-                              </div>
+                              <span className="text-sm">{userData.conversion_limit}</span>
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const endDate = new Date();
-                                endDate.setMonth(endDate.getMonth() + 1);
-                                updateSubscriptionDate(user.id, endDate.toISOString());
-                              }}
-                            >
-                              +1 Month
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const endDate = new Date();
-                                endDate.setFullYear(endDate.getFullYear() + 1);
-                                updateSubscriptionDate(user.id, endDate.toISOString());
-                              }}
-                            >
-                              +1 Year
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {new Date(user.created_at).toLocaleDateString()}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={isEditing ? isEditing.subscription_active ?? userData.subscription_active : userData.subscription_active}
+                                onCheckedChange={(checked) => {
+                                  if (!isEditing) {
+                                    startEditingUser(userData.id, userData);
+                                  }
+                                  updateEditingUser(userData.id, 'subscription_active', checked);
+                                }}
+                              />
+                              <span className={(isEditing ? isEditing.subscription_active ?? userData.subscription_active : userData.subscription_active) ? 'text-green-600 font-semibold' : 'text-gray-500'}>
+                                {(isEditing ? isEditing.subscription_active ?? userData.subscription_active : userData.subscription_active) ? 'Active' : 'Free'}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-2">
+                              {(isEditing ? isEditing.subscription_active ?? userData.subscription_active : userData.subscription_active) ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="datetime-local"
+                                    value={isEditing && isEditing.subscription_end_date 
+                                      ? new Date(isEditing.subscription_end_date).toISOString().slice(0, 16)
+                                      : userData.subscription_end_date 
+                                        ? new Date(userData.subscription_end_date).toISOString().slice(0, 16) 
+                                        : ''
+                                    }
+                                    onChange={(e) => {
+                                      if (!isEditing) {
+                                        startEditingUser(userData.id, userData);
+                                      }
+                                      updateEditingUser(userData.id, 'subscription_end_date', new Date(e.target.value).toISOString());
+                                    }}
+                                    className="text-sm border rounded px-2 py-1 w-44 bg-background"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="datetime-local"
+                                    value={isEditing && isEditing.subscription_end_date 
+                                      ? new Date(isEditing.subscription_end_date).toISOString().slice(0, 16)
+                                      : ''
+                                    }
+                                    onChange={(e) => {
+                                      if (!isEditing) {
+                                        startEditingUser(userData.id, userData);
+                                      }
+                                      if (e.target.value) {
+                                        updateEditingUser(userData.id, 'subscription_end_date', new Date(e.target.value).toISOString());
+                                      }
+                                    }}
+                                    className="text-sm border rounded px-2 py-1 w-44 bg-background"
+                                    placeholder="Set end date"
+                                  />
+                                  <span className="text-xs text-gray-500">Set date</span>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const endDate = new Date();
+                                  endDate.setMonth(endDate.getMonth() + 1);
+                                  quickUpdateDate(userData.id, endDate.toISOString());
+                                }}
+                                disabled={isUpdating}
+                              >
+                                +1 Month
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const endDate = new Date();
+                                  endDate.setFullYear(endDate.getFullYear() + 1);
+                                  quickUpdateDate(userData.id, endDate.toISOString());
+                                }}
+                                disabled={isUpdating}
+                              >
+                                +1 Year
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-2">
+                              {hasChanges ? (
+                                <>
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => saveUserChanges(userData.id, userData)}
+                                    disabled={isUpdating}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Changes'}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => cancelEditingUser(userData.id)}
+                                    disabled={isUpdating}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => startEditingUser(userData.id, userData)}
+                                  disabled={isUpdating}
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {new Date(userData.created_at).toLocaleDateString()}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
