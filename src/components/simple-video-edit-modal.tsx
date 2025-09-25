@@ -109,7 +109,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
               link.href = downloadUrl;
               link.download = `processed_${file.name}`;
               link.click();
-              toast.success('Video processed successfully!');
+              toast.success('Video processed and downloaded! You can continue editing other videos.');
             } else if (statusResult.status === 'error') {
               toast.error('Video processing failed');
             } else {
@@ -121,7 +121,7 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
         };
         
         setTimeout(pollStatus, 2000);
-        onClose();
+        // Removed automatic modal closing to allow continued editing
       } else {
         throw new Error(result.message || 'Processing failed');
       }
