@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { UploadCloud, Loader2, Download, Video, XCircle, Play, Pause, Trash2, Square, File as FileIcon, X } from "lucide-react";
-import { useSubscription } from "@/hooks/useSubscription";
+
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -265,7 +265,7 @@ export function UploadSection() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [editingFile, setEditingFile] = useState<UploadedFile | null>(null);
-  const { canConvert, conversionsUsed, conversionsLimit, subscribed, refreshSubscription } = useSubscription();
+  
   const { user, session } = useAuth();
 
   const createVideoPreview = (file: File): Promise<string> => {
@@ -313,15 +313,6 @@ export function UploadSection() {
       return;
     }
 
-    if (!subscribed) {
-      toast.error('Please subscribe to upload and process videos');
-      return;
-    }
-
-    if (!canConvert) {
-      toast.error(`You've used all ${conversionsLimit} conversions this month.`);
-      return;
-    }
 
     const newFilesPromises = videoFiles.map(async (file) => {
       const fileId = crypto.randomUUID();
@@ -340,7 +331,7 @@ export function UploadSection() {
   
     const newFiles = (await Promise.all(newFilesPromises)).filter(Boolean) as UploadedFile[];
     setFiles(prev => [...prev, ...newFiles]);
-  }, [subscribed, canConvert, conversionsLimit, user]);
+  }, [user]);
 
   const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); handleFiles(Array.from(e.dataTransfer.files)); }, [handleFiles]);
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -393,8 +384,6 @@ export function UploadSection() {
         setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, status: 'completed', downloadUrl: result.downloadUrl } : f));
         toast.success(`Processing complete for ${editingFile.file.name}!`);
         
-        // Only refresh subscription to update count, don't close the modal
-        refreshSubscription().catch(console.error);
       });
       
     } catch (error) {
@@ -460,27 +449,21 @@ export function UploadSection() {
         <div className="text-center mb-8">
           <h2 className="text-4xl font-bold">Upload Your Videos</h2>
           <p className="text-slate-400 mt-2">Drag and drop or click to select files</p>
-          {subscribed && (
-            <p className="text-sm text-slate-500 mt-2">
-              Conversions used: {conversionsUsed} / {conversionsLimit}
-            </p>
-          )}
         </div>
-        <div className={`upload-zone ${isDragging ? 'dragging' : ''} ${!subscribed ? 'opacity-50 cursor-not-allowed' : ''}`} onDrop={subscribed ? handleDrop : undefined} onDragOver={subscribed ? handleDragOver : undefined} onDragLeave={subscribed ? handleDragLeave : undefined}>
+        <div className={`upload-zone ${isDragging ? 'dragging' : ''}`} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
           <UploadCloud className="icon" />
           <h3 className="text-lg font-semibold">
-            {!subscribed ? 'Subscribe to upload videos' : 'Drop videos here'}
+            Drop videos here
           </h3>
           <p className="text-slate-500 my-2">or</p>
-          <label className={`button-style ${!subscribed || !canConvert ? 'opacity-50 cursor-not-allowed' : ''}`}>
+          <label className="button-style">
               Choose Files
               <input 
                 type="file" 
                 multiple 
                 accept="video/*" 
                 className="hidden" 
-                onChange={handleFileSelect} 
-                disabled={!subscribed || !canConvert}
+                onChange={handleFileSelect}
               />
           </label>
         </div>

@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { VideoEditModal } from "@/components/simple-video-edit-modal";
-import { useSubscription } from "@/hooks/useSubscription";
+
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -26,7 +26,7 @@ export function MultipleVideoUpload() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { canConvert, conversionsUsed, conversionsLimit, subscribed, refreshSubscription } = useSubscription();
+  
   const { user, session } = useAuth();
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,13 +40,6 @@ export function MultipleVideoUpload() {
       return;
     }
 
-    // Check subscription limits
-    const totalVideosToProcess = selectedFiles.length + files.length;
-    
-    if (subscribed && totalVideosToProcess > conversionsLimit - conversionsUsed) {
-      toast.error(`You can only convert ${conversionsLimit - conversionsUsed} more videos this month`);
-      return;
-    }
 
     setUploading(true);
     const newFiles: UploadedFile[] = [];
@@ -122,13 +115,6 @@ export function MultipleVideoUpload() {
             status: 'processing'
           });
 
-        // Update subscription usage
-        await supabase
-          .from('subscriptions')
-          .update({
-            conversions_used: conversionsUsed + 1
-          })
-          .eq('user_id', user.id);
 
         // Update file status
         setSelectedFiles(prev => 
@@ -139,8 +125,6 @@ export function MultipleVideoUpload() {
           )
         );
 
-        // Refresh subscription data to update UI
-        await refreshSubscription();
         
         toast.success('Video processing started!');
       } catch (error) {
@@ -197,19 +181,9 @@ export function MultipleVideoUpload() {
             {uploading ? 'Uploading...' : 'Select Videos'}
           </Button>
           
-          {!subscribed ? (
-            <p className="text-sm text-muted-foreground">
-              Free users can upload videos but need Pro plan to convert them
-            </p>
-          ) : !canConvert ? (
-            <p className="text-sm text-muted-foreground">
-              You've used all {conversionsLimit} conversions this month
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {conversionsLimit - conversionsUsed} conversions remaining this month
-            </p>
-          )}
+          <p className="text-sm text-muted-foreground">
+            Select video files to upload and edit with blur effects
+          </p>
         </div>
 
         {/* Show upload progress */}
@@ -251,7 +225,7 @@ export function MultipleVideoUpload() {
                         size="sm"
                         variant="outline"
                         onClick={() => editFile(file)}
-                        disabled={!canConvert}
+                        disabled={false}
                       >
                         Edit
                       </Button>

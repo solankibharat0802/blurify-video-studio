@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AdminSubscriptionManager } from "@/components/admin-subscription-manager";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -146,14 +146,7 @@ export function AdminPanel() {
   }
 
   return (
-    <Tabs defaultValue="overview" className="w-full">
-      <TabsList className="grid w-full grid-cols-3">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
-        <TabsTrigger value="coupons">Coupons</TabsTrigger>
-      </TabsList>
-      
-      <TabsContent value="overview">
+    <div className="w-full">
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
@@ -257,15 +250,6 @@ export function AdminPanel() {
             </CardContent>
           </Card>
         </div>
-      </TabsContent>
-      
-      <TabsContent value="subscriptions">
-        <AdminSubscriptionManager />
-      </TabsContent>
-      
-      <TabsContent value="coupons">
-        <AdminSubscriptionManager />
-      </TabsContent>
-    </Tabs>
+    </div>
   );
 }
