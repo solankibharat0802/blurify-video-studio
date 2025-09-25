@@ -105,11 +105,25 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
             
             if (statusResult.status === 'completed') {
               const downloadUrl = `${getBackendUrl()}/download/${file.videoId}`;
-              const link = document.createElement('a');
-              link.href = downloadUrl;
-              link.download = `processed_${file.name}`;
-              link.click();
-              toast.success('Video processed and downloaded! You can continue editing other videos.');
+              try {
+                const resp = await fetch(downloadUrl);
+                if (!resp.ok) throw new Error('Download failed');
+                const blob = await resp.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = objectUrl;
+                link.download = `processed_${file.name}`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(objectUrl);
+                toast.success('Video processed and downloaded! You can continue editing other videos.');
+              } catch (e) {
+                console.error('Download error:', e);
+                // Fallback: open in new tab to avoid interrupting current page
+                window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+                toast.success('Video processed! Download started in a new tab.');
+              }
             } else if (statusResult.status === 'error') {
               toast.error('Video processing failed');
             } else {
