@@ -201,32 +201,32 @@ export const VideoEditModal = ({ isOpen, onClose, file, onSaveEdit }: VideoEditM
                  Control playback speed for preview - does not affect processed video
                </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="flex gap-2 items-center">
-                <span className="text-sm font-medium">Current Speed: {videoSpeed}x</span>
-                <Button 
-                  onClick={() => setSpeed(1)} 
-                  variant={videoSpeed === 1 ? "default" : "outline"}
-                  size="sm"
-                >
-                  1x
-                </Button>
-                <Button 
-                  onClick={() => setSpeed(2)} 
-                  variant={videoSpeed === 2 ? "default" : "outline"}
-                  size="sm"
-                >
-                  2x
-                </Button>
-                <Button 
-                  onClick={() => setSpeed(5)} 
-                  variant={videoSpeed === 5 ? "default" : "outline"}
-                  size="sm"
-                >
-                  5x
-                </Button>
-              </div>
-            </CardContent>
+             <CardContent>
+               <div className="flex gap-2 items-center">
+                 <span className="text-sm font-medium">Current Speed: {videoSpeed}x</span>
+                 <Button 
+                   onClick={() => setSpeed(2)} 
+                   variant={videoSpeed === 2 ? "default" : "outline"}
+                   size="sm"
+                 >
+                   2x
+                 </Button>
+                 <Button 
+                   onClick={() => setSpeed(5)} 
+                   variant={videoSpeed === 5 ? "default" : "outline"}
+                   size="sm"
+                 >
+                   5x
+                 </Button>
+                 <Button 
+                   onClick={() => setSpeed(10)} 
+                   variant={videoSpeed === 10 ? "default" : "outline"}
+                   size="sm"
+                 >
+                   10x
+                 </Button>
+               </div>
+             </CardContent>
           </Card>
 
           {blurMasks.length === 0 ? (

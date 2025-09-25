@@ -14,10 +14,6 @@ interface UserData {
   email: string;
   full_name: string;
   is_admin: boolean;
-  plan_type: string;
-  status: string;
-  conversions_limit: number;
-  conversions_used: number;
   conversion_count: number;
   created_at: string;
 }
@@ -70,11 +66,6 @@ export function AdminPanel() {
 
       if (error) throw error;
 
-      // Get subscriptions data separately
-      const { data: subscriptionsData } = await supabase
-        .from('subscriptions')
-        .select('*');
-
       // Get conversion counts for each user
       const userIds = usersData?.map(u => u.user_id) || [];
       const { data: conversionCounts } = await supabase
@@ -88,23 +79,12 @@ export function AdminPanel() {
         return acc;
       }, {} as Record<string, number>) || {};
 
-      // Create subscriptions map
-      const subscriptionsMap = subscriptionsData?.reduce((acc, sub) => {
-        acc[sub.user_id] = sub;
-        return acc;
-      }, {} as Record<string, any>) || {};
-
       const formattedUsers = usersData?.map((user: any) => {
-        const subscription = subscriptionsMap[user.user_id];
         return {
           id: user.user_id,
           email: user.email,
           full_name: user.full_name || user.email,
           is_admin: user.is_admin,
-          plan_type: subscription?.plan_type || 'free',
-          status: subscription?.status || 'inactive',
-          conversions_limit: subscription?.conversions_limit || 0,
-          conversions_used: subscription?.conversions_used || 0,
           conversion_count: conversionCountsMap[user.user_id] || 0,
           created_at: user.created_at,
         };
@@ -148,24 +128,13 @@ export function AdminPanel() {
   return (
     <div className="w-full">
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Total Users</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{users.length}</div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Pro Subscribers</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {users.filter(u => u.plan_type === 'pro' && u.status === 'active').length}
-                </div>
               </CardContent>
             </Card>
 
@@ -183,9 +152,9 @@ export function AdminPanel() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Users & Subscriptions</CardTitle>
+              <CardTitle>Users & Activity</CardTitle>
               <CardDescription>
-                Overview of user subscriptions and conversion usage
+                Overview of users and their conversion activity
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -194,10 +163,7 @@ export function AdminPanel() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>User</TableHead>
-                      <TableHead>Plan</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Conversions</TableHead>
-                      <TableHead>Usage</TableHead>
+                      <TableHead>Total Conversions</TableHead>
                       <TableHead>Joined</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -212,23 +178,8 @@ export function AdminPanel() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={user.plan_type === 'pro' ? 'default' : 'secondary'}>
-                            {user.plan_type.toUpperCase()}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
-                            {user.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
                           <div className="text-sm">
-                            {user.conversions_used} / {user.conversions_limit}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {user.conversion_count} total
+                            {user.conversion_count} videos processed
                           </div>
                         </TableCell>
                         <TableCell>

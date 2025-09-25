@@ -229,7 +229,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error processing video:', error)
     return new Response(
-      JSON.stringify({ error: `Processing failed: ${error.message}` }),
+      JSON.stringify({ error: `Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}` }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
