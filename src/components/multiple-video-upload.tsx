@@ -272,7 +272,7 @@ export function MultipleVideoUpload() {
 
         {currentEditFile && (
           <VideoEditModal
-            isOpen={isModalOpen}
+            isOpen={!!currentEditFile}
             onClose={() => {
               setIsModalOpen(false);
               setCurrentEditFile(null);
